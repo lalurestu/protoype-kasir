@@ -3,11 +3,68 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/local_db_service.dart';
 
 final kasirReportProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final dio = ref.watch(dioProvider);
-  final response = await dio.get('/reports/kasir');
-  return response.data;
+  final localDb = ref.read(localDbProvider);
+  
+  Map<String, dynamic> serverData = {
+    'total_transactions': 0,
+    'total_revenue': 0.0,
+    'total_cash': 0.0,
+    'total_qris': 0.0,
+    'recent_transactions': [],
+  };
+
+  try {
+    final response = await dio.get('/reports/kasir');
+    if (response.data != null && response.data is Map) {
+      serverData = response.data;
+    }
+  } catch (e) {
+    // Kalo error atau offline, tetep lanjut pake data server kosong + digabung data lokal
+  }
+
+  // Gabung sama transaksi offline yang belom sinkron
+  final pendingList = localDb.getPendingTransactions();
+  
+  int localCount = 0;
+  double localRev = 0.0;
+  double localCash = 0.0;
+  double localQris = 0.0;
+  List<dynamic> localRecent = [];
+
+  for (var tx in pendingList.reversed) {
+    localCount++;
+    final amount = (tx['total_amount'] as num).toDouble();
+    localRev += amount;
+    
+    if (tx['payment_method'] == 'cash') {
+      localCash += amount;
+    } else {
+      localQris += amount;
+    }
+    
+    localRecent.add({
+      'id': 'offline_$localCount',
+      'total_amount': amount,
+      'payment_method': tx['payment_method'],
+      'created_at': tx['created_at'] ?? DateTime.now().toString(),
+      'items': tx['items'] ?? [],
+    });
+  }
+
+  return {
+    'total_transactions': (serverData['total_transactions'] ?? 0) + localCount,
+    'total_revenue': ((serverData['total_revenue'] ?? 0.0) as num).toDouble() + localRev,
+    'total_cash': ((serverData['total_cash'] ?? 0.0) as num).toDouble() + localCash,
+    'total_qris': ((serverData['total_qris'] ?? 0.0) as num).toDouble() + localQris,
+    'recent_transactions': [
+      ...localRecent,
+      ...(serverData['recent_transactions'] as List<dynamic>? ?? [])
+    ],
+  };
 });
 
 class KasirReportScreen extends ConsumerWidget {
@@ -109,7 +166,7 @@ class KasirReportScreen extends ConsumerWidget {
                               children: [
                                 Text('${item['quantity']}x', style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
                                 const SizedBox(width: 12),
-                                Expanded(child: Text(item['name'], style: const TextStyle(color: Colors.white))),
+                                Expanded(child: Text(item['name'] ?? 'Menu Offline', style: const TextStyle(color: Colors.white))),
                                 Text('Rp ${item['price']}', style: const TextStyle(color: AppTheme.textSecondary)),
                               ],
                             ),
