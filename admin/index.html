@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="app" class="min-h-screen">
+        <!-- Login Screen -->
+        <div v-if="!token" class="flex items-center justify-center min-h-screen bg-gray-900">
+            <div class="bg-white p-8 rounded-lg shadow-lg w-96">
+                <div class="flex justify-center mb-6">
+                    <svg class="w-16 h-16 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                </div>
+                <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">Super Admin Login</h1>
+                <form @submit.prevent="login">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Email</label>
+                        <input v-model="email" type="email" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Kata Sandi</label>
+                        <input v-model="password" type="password" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+                    </div>
+                    <button type="submit" :disabled="isLoading" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full">
+                        {{ isLoading ? 'Memproses...' : 'Masuk' }}
+                    </button>
+                    <p v-if="error" class="text-red-500 text-xs italic mt-4">{{ error }}</p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div v-else class="flex h-screen bg-gray-100">
+            <!-- Sidebar -->
+            <div class="w-64 bg-gray-900 text-white flex flex-col">
+                <div class="p-6 flex items-center space-x-3">
+                    <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                    <h2 class="text-xl font-bold">Portal Admin</h2>
+                </div>
+                <nav class="flex-1 px-4 mt-6">
+                    <a href="#" class="block py-3 px-4 bg-gray-800 rounded font-semibold flex items-center">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        Manajemen Owner
+                    </a>
+                </nav>
+                <div class="p-4">
+                    <button @click="logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded w-full flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                        Keluar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="flex-1 overflow-y-auto p-8">
+                <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-sm">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">Manajemen Tenant (Owner)</h1>
+                        <p class="text-gray-500 mt-1">Kontrol akses masuk untuk para pemilik toko</p>
+                    </div>
+                    <button @click="generateCode" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded shadow flex items-center transition duration-200">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        Buat Kode Pendaftaran Baru
+                    </button>
+                </div>
+
+                <div v-if="newCode" class="bg-green-50 border-l-4 border-green-500 text-green-700 p-6 mb-8 rounded-r-lg shadow-sm" role="alert">
+                    <div class="flex items-center mb-2">
+                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <p class="font-bold text-lg">Kode Verifikasi Berhasil Dibuat!</p>
+                    </div>
+                    <div class="bg-white p-4 rounded mt-4 border border-green-200 flex justify-between items-center">
+                        <p class="text-3xl tracking-widest font-mono font-bold text-gray-800">{{ newCode }}</p>
+                        <button @click="copyCode" class="text-gray-500 hover:text-gray-700 font-semibold text-sm underline">Salin Kode</button>
+                    </div>
+                    <p class="text-sm mt-3 text-green-600 font-medium">Instruksi: Berikan kode unik ini kepada calon Owner. Mereka wajib memasukkan kode ini saat mendaftar di aplikasi Kasir.</p>
+                </div>
+
+                <div class="bg-white shadow-sm rounded-lg overflow-hidden border border-gray-200">
+                    <table class="min-w-full leading-normal">
+                        <thead>
+                            <tr>
+                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Nama Owner</th>
+                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Email Akun</th>
+                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status Akses</th>
+                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Aksi Super Admin</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="owner in owners" :key="owner.id" class="hover:bg-gray-50 transition duration-150">
+                                <td class="px-6 py-5 border-b border-gray-200 text-sm">
+                                    <p class="text-gray-900 whitespace-no-wrap font-bold text-base">{{ owner.name }}</p>
+                                    <p class="text-xs text-gray-500 mt-1">Bergabung: {{ new Date(owner.created_at).toLocaleDateString() }}</p>
+                                </td>
+                                <td class="px-6 py-5 border-b border-gray-200 text-sm">
+                                    <div class="flex items-center">
+                                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-3 font-bold">
+                                            {{ owner.email.charAt(0).toUpperCase() }}
+                                        </div>
+                                        <p class="text-gray-700 whitespace-no-wrap font-medium">{{ owner.email }}</p>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-5 border-b border-gray-200 text-sm">
+                                    <span v-if="owner.is_active" class="relative inline-block px-4 py-1.5 font-bold text-green-800 leading-tight">
+                                        <span aria-hidden class="absolute inset-0 bg-green-200 opacity-50 rounded-full"></span>
+                                        <span class="relative flex items-center"><span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span> Aktif</span>
+                                    </span>
+                                    <span v-else class="relative inline-block px-4 py-1.5 font-bold text-red-800 leading-tight">
+                                        <span aria-hidden class="absolute inset-0 bg-red-200 opacity-50 rounded-full"></span>
+                                        <span class="relative flex items-center"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span> Diblokir</span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-5 border-b border-gray-200 text-sm text-right">
+                                    <button @click="toggleOwner(owner.id)" 
+                                            :class="owner.is_active ? 'bg-red-50 hover:bg-red-100 border-red-200 text-red-600' : 'bg-green-50 hover:bg-green-100 border-green-200 text-green-600'" 
+                                            class="font-bold border py-2 px-4 rounded shadow-sm transition duration-200">
+                                        {{ owner.is_active ? 'Blokir Akun' : 'Buka Blokir' }}
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr v-if="owners.length === 0">
+                                <td colspan="4" class="px-6 py-8 border-b border-gray-200 bg-white text-sm text-center text-gray-500">
+                                    <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                                    Belum ada Owner yang terdaftar di sistem.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const API_URL = '../api';
+
+        createApp({
+            setup() {
+                const token = ref(localStorage.getItem('admin_token') || '');
+                const email = ref('');
+                const password = ref('');
+                const error = ref('');
+                const isLoading = ref(false);
+                const owners = ref([]);
+                const newCode = ref('');
+
+                const fetchOwners = async () => {
+                    if (!token.value) return;
+                    try {
+                        const res = await fetch(`${API_URL}/admin/owners`, {
+                            headers: { 'Authorization': `Bearer ${token.value}` }
+                        });
+                        if (res.status === 401 || res.status === 403) {
+                            logout();
+                            return;
+                        }
+                        const data = await res.json();
+                        owners.value = data;
+                    } catch (e) {
+                        console.error(e);
+                    }
+                };
+
+                const login = async () => {
+                    isLoading.value = true;
+                    error.value = '';
+                    try {
+                        const res = await fetch(`${API_URL}/auth/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: email.value, password: password.value })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Email atau Kata Sandi salah!');
+                        
+                        if (data.user.role !== 'super_admin') {
+                            throw new Error('Akses Ditolak! Hanya Super Admin yang diizinkan masuk.');
+                        }
+
+                        token.value = data.access_token;
+                        localStorage.setItem('admin_token', data.access_token);
+                        fetchOwners();
+                    } catch (e) {
+                        error.value = e.message;
+                    } finally {
+                        isLoading.value = false;
+                    }
+                };
+
+                const logout = () => {
+                    token.value = '';
+                    localStorage.removeItem('admin_token');
+                };
+
+                const generateCode = async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/admin/generate-code`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token.value}` }
+                        });
+                        const data = await res.json();
+                        newCode.value = data.code;
+                    } catch (e) {
+                        alert('Gagal membuat kode verifikasi baru. Silakan coba lagi.');
+                    }
+                };
+
+                const copyCode = () => {
+                    navigator.clipboard.writeText(newCode.value);
+                    alert('Kode berhasil disalin: ' + newCode.value);
+                };
+
+                const toggleOwner = async (id) => {
+                    const confirmAction = confirm("Apakah Anda yakin ingin mengubah status akses Owner ini?");
+                    if (!confirmAction) return;
+
+                    try {
+                        const res = await fetch(`${API_URL}/admin/owners/${id}/toggle`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token.value}` }
+                        });
+                        if (res.ok) {
+                            fetchOwners();
+                        } else {
+                            throw new Error('Failed to toggle');
+                        }
+                    } catch (e) {
+                        alert('Terjadi kesalahan saat mengubah status.');
+                    }
+                };
+
+                onMounted(() => {
+                    if (token.value) fetchOwners();
+                });
+
+                return { token, email, password, error, isLoading, login, logout, owners, generateCode, newCode, copyCode, toggleOwner }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

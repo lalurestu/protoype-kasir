@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/routing/route_names.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
@@ -43,16 +44,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         const Icon(Icons.storefront, size: 64, color: AppTheme.primaryColor),
                         const SizedBox(height: 24),
-                        Text(
-                          'Welcome Back',
+                        const Text(
+                          'Selamat Datang',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 32),
+                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          'Sign in to your POS account',
+                        const Text(
+                          'Masuk untuk melanjutkan',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
                         ),
                         const SizedBox(height: 32),
                         if (_errorMsg != null)
@@ -71,18 +72,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         TextField(
                           controller: _emailCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Email Address',
-                            prefixIcon: Icon(Icons.email_outlined, color: AppTheme.textSecondary),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Alamat Email',
+                            labelStyle: const TextStyle(color: AppTheme.textSecondary),
+                            prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.textSecondary),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppTheme.primaryColor.withOpacity(0.3)),
+                            ),
                           ),
                           keyboardType: TextInputType.emailAddress,
                         ),
                         const SizedBox(height: 16),
                         TextField(
                           controller: _passCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: Icon(Icons.lock_outline, color: AppTheme.textSecondary),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Kata Sandi',
+                            labelStyle: const TextStyle(color: AppTheme.textSecondary),
+                            prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.textSecondary),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppTheme.primaryColor.withOpacity(0.3)),
+                            ),
                           ),
                           obscureText: true,
                         ),
@@ -92,11 +105,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _handleLogin,
                             style: ElevatedButton.styleFrom(
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             child: _isLoading
                                 ? const CircularProgressIndicator(color: Colors.white)
-                                : const Text('Sign In'),
+                                : const Text('Masuk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                           ),
                         ),
                       ],
@@ -119,10 +132,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       await ref.read(authProvider.notifier).login(_emailCtrl.text.trim(), _passCtrl.text);
-      // Navigation is handled automatically by GoRouter's redirect based on AuthState
     } catch (e) {
       setState(() {
-        _errorMsg = e.toString();
+        if (e is DioException) {
+          if (e.response?.statusCode == 401) {
+            _errorMsg = 'Email atau kata sandi salah.';
+          } else if (e.response?.data != null && e.response?.data is Map && e.response!.data['error'] != null) {
+             _errorMsg = e.response!.data['error'].toString();
+          } else {
+             _errorMsg = 'Terjadi kesalahan jaringan atau server.';
+          }
+        } else {
+          _errorMsg = e.toString();
+        }
       });
     } finally {
       if (mounted) {

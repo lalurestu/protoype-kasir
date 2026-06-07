@@ -10,8 +10,10 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/owner_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/manage_menu_screen.dart';
-import '../../features/super_admin/presentation/screens/admin_dashboard_screen.dart';
+import '../../features/owner/presentation/screens/manage_kasir_screen.dart';
 import '../../features/kasir/presentation/screens/pos_checkout_screen.dart';
+import '../../features/kasir/presentation/screens/kasir_report_screen.dart';
+import '../../features/owner/presentation/screens/owner_report_screen.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -70,6 +72,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             name: RouteNames.posCheckout,
             builder: (context, state) => const PosCheckoutScreen(),
           ),
+          GoRoute(
+            path: 'report',
+            name: RouteNames.kasirReport,
+            builder: (context, state) => const KasirReportScreen(),
+          ),
         ],
       ),
       GoRoute(
@@ -82,12 +89,24 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             name: RouteNames.manageMenu,
             builder: (context, state) => const ManageMenuScreen(),
           ),
+          GoRoute(
+            path: 'manage-kasir',
+            name: RouteNames.manageKasir,
+            builder: (context, state) => const ManageKasirScreen(),
+          ),
+          GoRoute(
+            path: 'report',
+            name: RouteNames.ownerReport,
+            builder: (context, state) => const OwnerReportScreen(),
+          ),
         ],
       ),
+      // Super admin routing isn't used via Flutter anymore
+      // We will leave the route to avoid breaking state mapping but it won't be used
       GoRoute(
         path: '/admin',
         name: RouteNames.adminDashboard,
-        builder: (context, state) => const AdminDashboardScreen(),
+        builder: (context, state) => const Scaffold(body: Center(child: Text('Please use the Web Dashboard for Super Admin.'))),
       ),
     ],
   );

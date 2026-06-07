@@ -12,9 +12,18 @@ class ManageMenuScreen extends ConsumerStatefulWidget {
 }
 
 class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
-  final _nameCtrl = TextEditingController();
-  final _priceCtrl = TextEditingController();
-  final _categoryCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _priceController = TextEditingController();
+  String _selectedCategory = 'makanan';
+  bool _isAvailable = true;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +31,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Menus'),
+        title: const Text('Kelola Menu'),
         backgroundColor: AppTheme.surfaceDark,
       ),
       backgroundColor: AppTheme.backgroundDark,
@@ -31,34 +40,54 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              Card(
-                child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(AppTheme.primaryColor.withOpacity(0.1)),
-                  columns: const [
-                    DataColumn(label: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Category', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Price', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
-                  ],
-                  rows: menus.map((menu) {
-                    return DataRow(cells: [
-                      DataCell(Text(menu.name)),
-                      DataCell(Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(color: AppTheme.secondaryColor.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                        child: Text(menu.category, style: const TextStyle(color: AppTheme.secondaryColor)),
-                      )),
-                      DataCell(Text('Rp ${menu.price}')),
-                      DataCell(Row(
-                        children: [
-                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () {}),
-                          IconButton(icon: const Icon(Icons.delete, color: AppTheme.error), onPressed: () {}),
-                        ],
-                      )),
-                    ]);
-                  }).toList(),
+              if (menus.isEmpty)
+                const Center(child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Text('Belum ada menu.', style: TextStyle(color: AppTheme.textSecondary)),
+                ))
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: menus.length,
+                  itemBuilder: (context, index) {
+                    final menu = menus[index];
+                    return Card(
+                      color: AppTheme.surfaceDark,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        title: Text(menu.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Text('Rp ${menu.price}', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                              child: Text(menu.category.toUpperCase(), style: const TextStyle(color: AppTheme.primaryColor, fontSize: 10)),
+                            ),
+                          ],
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.blue),
+                              onPressed: () => _showMenuDialog(context, ref, menu: menu),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: AppTheme.error),
+                              onPressed: () => _deleteMenu(context, ref, menu.id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              ),
             ],
           );
         },
@@ -66,53 +95,152 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
         error: (e, st) => Center(child: Text('Error: $e')),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddMenuDialog,
+        onPressed: () => _showMenuDialog(context, ref),
         backgroundColor: AppTheme.primaryColor,
         icon: const Icon(Icons.add),
-        label: const Text('Add New Menu'),
+        label: const Text('Tambah Menu Baru'),
       ),
     );
   }
 
-  void _showAddMenuDialog() {
-    showDialog(
+  Future<void> _deleteMenu(BuildContext context, WidgetRef ref, int menuId) async {
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surfaceDark,
-        title: const Text('Add New Menu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Menu Name')),
-            const SizedBox(height: 16),
-            TextField(controller: _priceCtrl, decoration: const InputDecoration(labelText: 'Price (Rp)'), keyboardType: TextInputType.number),
-            const SizedBox(height: 16),
-            TextField(controller: _categoryCtrl, decoration: const InputDecoration(labelText: 'Category')),
-          ],
-        ),
+        title: const Text('Hapus Menu', style: TextStyle(color: Colors.white)),
+        content: const Text('Yakin mau menghapus menu ini?', style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary))),
-          ElevatedButton(onPressed: _submitMenu, child: const Text('Save Menu')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal', style: TextStyle(color: Colors.white70))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus'),
+          ),
         ],
       ),
     );
-  }
 
-  Future<void> _submitMenu() async {
-    try {
+    if (confirm == true) {
       final dio = ref.read(dioProvider);
-      await dio.post('/menus', data: {
-        'name': _nameCtrl.text,
-        'price': double.parse(_priceCtrl.text),
-        'category': _categoryCtrl.text,
-      });
-      // Refresh menus
-      ref.invalidate(menusProvider);
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      try {
+        await dio.delete('/menus/$menuId');
+        ref.invalidate(menusProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menu dihapus', style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+        }
       }
     }
+  }
+
+  void _showMenuDialog(BuildContext context, WidgetRef ref, {dynamic menu}) {
+    if (menu != null) {
+      _nameController.text = menu.name;
+      _priceController.text = menu.price.toString();
+      _selectedCategory = menu.category;
+      _isAvailable = menu.isAvailable;
+    } else {
+      _nameController.clear();
+      _priceController.clear();
+      _selectedCategory = 'makanan';
+      _isAvailable = true;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: AppTheme.surfaceDark,
+              title: Text(menu == null ? 'Tambah Menu' : 'Ubah Menu', style: const TextStyle(color: Colors.white)),
+              content: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Nama Menu', labelStyle: TextStyle(color: AppTheme.textSecondary)),
+                      validator: (val) => val == null || val.isEmpty ? 'Isi kolom ini' : null,
+                    ),
+                    TextFormField(
+                      controller: _priceController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Harga (Rp)', labelStyle: TextStyle(color: AppTheme.textSecondary)),
+                      keyboardType: TextInputType.number,
+                      validator: (val) => val == null || val.isEmpty ? 'Isi kolom ini' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      dropdownColor: AppTheme.surfaceDark,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Kategori', labelStyle: TextStyle(color: AppTheme.textSecondary)),
+                      items: const [
+                        DropdownMenuItem(value: 'makanan', child: Text('Makanan')),
+                        DropdownMenuItem(value: 'minuman', child: Text('Minuman')),
+                        DropdownMenuItem(value: 'snack', child: Text('Snack')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setStateDialog(() => _selectedCategory = val);
+                        }
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Tersedia', style: TextStyle(color: Colors.white)),
+                      value: _isAvailable,
+                      activeColor: AppTheme.primaryColor,
+                      onChanged: (val) => setStateDialog(() => _isAvailable = val),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal', style: TextStyle(color: AppTheme.textSecondary))),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate()) {
+                      final dio = ref.read(dioProvider);
+                      try {
+                        if (menu == null) {
+                          await dio.post('/menus', data: {
+                            'name': _nameController.text,
+                            'price': double.parse(_priceController.text),
+                            'category': _selectedCategory,
+                            'is_available': _isAvailable,
+                          });
+                        } else {
+                          await dio.put('/menus/${menu.id}', data: {
+                            'name': _nameController.text,
+                            'price': double.parse(_priceController.text),
+                            'category': _selectedCategory,
+                            'is_available': _isAvailable,
+                          });
+                        }
+                        ref.invalidate(menusProvider);
+                        if (context.mounted) Navigator.pop(context);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+                        }
+                      }
+                    }
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
   }
 }

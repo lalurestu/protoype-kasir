@@ -25,7 +25,16 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
   }
 
   void removeItem(int menuId) {
-    state = state.where((item) => item.menu.id != menuId).toList();
+    final index = state.indexWhere((item) => item.menu.id == menuId);
+    if (index >= 0) {
+      final updatedList = List<CartItem>.from(state);
+      if (updatedList[index].quantity > 1) {
+        updatedList[index].quantity--;
+        state = updatedList;
+      } else {
+        state = state.where((item) => item.menu.id != menuId).toList();
+      }
+    }
   }
 
   void clearCart() {
