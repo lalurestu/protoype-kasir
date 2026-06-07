@@ -338,6 +338,88 @@ try {
         echo json_encode(["message" => "Menu deleted successfully"]);
         exit;
 
+    } elseif ($method === 'POST' && $route === '/api/qris/generate') {
+        $user = getAuthUser($pdo);
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input['total_amount'])) {
+            http_response_code(400);
+            echo json_encode(["error" => "total_amount is required"]);
+            exit;
+        }
+
+        $serverKey = 'Mid-server-pScqIkUSLacGu739R4FnTDFO'; // User's server key
+        $orderId = 'QRIS-' . time() . '-' . rand(100, 999);
+        $grossAmount = (int)$input['total_amount'];
+
+        $payload = [
+            "payment_type" => "qris",
+            "transaction_details" => [
+                "order_id" => $orderId,
+                "gross_amount" => $grossAmount
+            ]
+        ];
+
+        $ch = curl_init('https://api.sandbox.midtrans.com/v2/charge');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Basic ' . base64_encode($serverKey . ':')
+        ]);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $resData = json_decode($response, true);
+
+        if (isset($resData['status_code']) && $resData['status_code'] == '201') {
+            $qrUrl = '';
+            if (isset($resData['actions']) && is_array($resData['actions'])) {
+                foreach ($resData['actions'] as $action) {
+                    if ($action['name'] === 'generate-qr-code') {
+                        $qrUrl = $action['url'];
+                        break;
+                    }
+                }
+            }
+            
+            echo json_encode([
+                "order_id" => $orderId,
+                "qr_url" => $qrUrl,
+                "qr_string" => $resData['qr_string'] ?? ''
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode(["error" => "Failed to generate QRIS", "midtrans_response" => $resData]);
+        }
+        exit;
+
+    } elseif ($method === 'GET' && preg_match('/^\/api\/qris\/status\/(.+)$/', $route, $matches)) {
+        $orderId = $matches[1];
+        $serverKey = 'Mid-server-pScqIkUSLacGu739R4FnTDFO';
+        
+        $ch = curl_init("https://api.sandbox.midtrans.com/v2/$orderId/status");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Accept: application/json',
+            'Authorization: Basic ' . base64_encode($serverKey . ':')
+        ]);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $resData = json_decode($response, true);
+        
+        if (isset($resData['transaction_status'])) {
+            echo json_encode(["status" => $resData['transaction_status']]);
+        } else {
+            http_response_code(404);
+            echo json_encode(["error" => "Transaction not found"]);
+        }
+        exit;
+
     } elseif ($method === 'POST' && $route === '/api/checkout') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'kasir') {

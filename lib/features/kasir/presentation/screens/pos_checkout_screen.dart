@@ -237,12 +237,108 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
             onPressed: () {
               Navigator.pop(context);
-              _processCheckout(totalAmount, 'qris');
+              _processMidtransQris(totalAmount);
             },
             child: const Text('QRIS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _processMidtransQris(double totalAmount) async {
+    setState(() => _isProcessing = true);
+    final dio = ref.read(dioProvider);
+    try {
+      final res = await dio.post('/qris/generate', data: {'total_amount': totalAmount});
+      if (res.data != null && res.data['qr_url'] != null) {
+        final orderId = res.data['order_id'];
+        final qrUrl = res.data['qr_url'];
+        final qrString = res.data['qr_string'] ?? '';
+        if (mounted) {
+          _showQrisDialog(context, orderId, qrUrl, qrString, totalAmount);
+        }
+      } else {
+        throw Exception('Gagal mendapatkan QR dari Midtrans');
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  void _showQrisDialog(BuildContext context, String orderId, String qrUrl, String qrString, double totalAmount) {
+    bool isChecking = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppTheme.surfaceDark,
+              title: const Text('Scan QRIS', style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Rp $totalAmount', style: const TextStyle(color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                    child: Image.network(qrUrl, width: 250, height: 250, fit: BoxFit.contain, errorBuilder: (c,e,s) => const Icon(Icons.broken_image, size: 100)),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Minta pelanggan scan QR Code di atas menggunakan aplikasi e-Wallet atau M-Banking.', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
+                  if (qrString.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text('QR String (Buat Simulator):', style: TextStyle(color: Colors.white, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    SelectableText(qrString, style: const TextStyle(color: Colors.grey, fontSize: 10), textAlign: TextAlign.center),
+                  ],
+                  const SizedBox(height: 24),
+                  if (isChecking)
+                    const CircularProgressIndicator()
+                  else
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondaryColor, minimumSize: const Size(double.infinity, 50)),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Cek Status Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      onPressed: () async {
+                        setDialogState(() => isChecking = true);
+                        try {
+                          final dio = ref.read(dioProvider);
+                          final res = await dio.get('/qris/status/$orderId');
+                          final status = res.data['status'];
+                          if (status == 'settlement' || status == 'capture') {
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              _processCheckout(totalAmount, 'qris');
+                            }
+                          } else {
+                            if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Status: $status. Pelanggan belum membayar.')));
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Gagal cek status: $e')));
+                        } finally {
+                          if (ctx.mounted) setDialogState(() => isChecking = false);
+                        }
+                      },
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isChecking ? null : () => Navigator.pop(ctx),
+                  child: const Text('Batal', style: TextStyle(color: AppTheme.error)),
+                ),
+              ],
+            );
+          }
+        );
+      },
     );
   }
 
