@@ -14,6 +14,7 @@ import '../../features/owner/presentation/screens/manage_kasir_screen.dart';
 import '../../features/kasir/presentation/screens/pos_checkout_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_report_screen.dart';
 import '../../features/owner/presentation/screens/owner_report_screen.dart';
+import '../../features/super_admin/presentation/screens/admin_dashboard_screen.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -101,12 +102,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      // Super admin routing isn't used via Flutter anymore
-      // We will leave the route to avoid breaking state mapping but it won't be used
+      // Super admin routing
       GoRoute(
         path: '/admin',
         name: RouteNames.adminDashboard,
-        builder: (context, state) => const Scaffold(body: Center(child: Text('Please use the Web Dashboard for Super Admin.'))),
+        builder: (context, state) => const AdminDashboardScreen(),
       ),
     ],
   );

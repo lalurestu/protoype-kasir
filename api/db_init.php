@@ -26,7 +26,9 @@ try {
     // 4. Drop tables in correct order if they exist
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
     $pdo->exec("DROP TABLE IF EXISTS `user_tokens`;");
+    $pdo->exec("DROP TABLE IF EXISTS `transaction_items`;");
     $pdo->exec("DROP TABLE IF EXISTS `transactions`;");
+    $pdo->exec("DROP TABLE IF EXISTS `verification_codes`;");
     $pdo->exec("DROP TABLE IF EXISTS `menus`;");
     $pdo->exec("DROP TABLE IF EXISTS `stores`;");
     $pdo->exec("DROP TABLE IF EXISTS `users`;");
@@ -42,6 +44,7 @@ try {
         `password` VARCHAR(255) NOT NULL,
         `role` ENUM('super_admin', 'owner', 'kasir') NOT NULL,
         `store_id` INT NULL,
+        `tenant_id` INT NULL,
         `is_active` BOOLEAN DEFAULT TRUE NOT NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

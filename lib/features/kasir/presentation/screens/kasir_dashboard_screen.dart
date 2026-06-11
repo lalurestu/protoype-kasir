@@ -55,6 +55,79 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
     }
   }
 
+  Future<void> _showTutupKasirDialog() async {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool isLoading = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Verifikasi Tutup Kasir'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Masukkan email dan kata sandi Anda untuk menutup kasir.'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailController,
+                    decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    decoration: const InputDecoration(labelText: 'Kata Sandi', border: OutlineInputBorder()),
+                    obscureText: true,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading ? null : () async {
+                    if (emailController.text.isEmpty || passwordController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email dan kata sandi harus diisi')));
+                      return;
+                    }
+                    setStateDialog(() => isLoading = true);
+                    try {
+                      final dio = ref.read(dioProvider);
+                      final response = await dio.post('/auth/login', data: {
+                        'email': emailController.text,
+                        'password': passwordController.text,
+                      });
+                      
+                      if (response.statusCode == 200 || response.statusCode == 201) {
+                        if (mounted) Navigator.pop(context);
+                        ref.read(authProvider.notifier).logout();
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verifikasi gagal. Periksa kembali email dan sandi.'), backgroundColor: Colors.red));
+                      }
+                    } finally {
+                      if (mounted) setStateDialog(() => isLoading = false);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Verifikasi & Tutup'),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -174,6 +247,37 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                     ),
                     const SizedBox(width: 8),
                     const Icon(Icons.arrow_forward_ios, color: Colors.orange, size: 24),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            InkWell(
+              onTap: _showTutupKasirDialog,
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceDark,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.lock_clock, size: 48, color: Colors.redAccent),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Tutup Kasir', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 4),
+                          Text('Akhiri sesi kasir dan keluar dari aplikasi', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_ios, color: Colors.redAccent, size: 24),
                   ],
                 ),
               ),

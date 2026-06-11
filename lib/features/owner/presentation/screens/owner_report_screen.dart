@@ -71,7 +71,49 @@ class OwnerReportScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Periode: ${row['period_date']}', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 18)),
-                            const Divider(color: Colors.white24, height: 24),
+                            const Divider(color: Colors.white24, height: 16),
+                            
+                            if (row['details'] != null && (row['details'] as List).isNotEmpty) ...[
+                              Text(
+                                selectedPeriod == 'daily' ? 'Rincian Pesanan:' : (selectedPeriod == 'monthly' ? 'Rincian Pendapatan Harian:' : 'Rincian Pendapatan Bulanan:'),
+                                style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold)
+                              ),
+                              const SizedBox(height: 8),
+                              ...((row['details'] as List).map((det) {
+                                if (selectedPeriod == 'daily') {
+                                  final itemsStr = (det['items'] as List?)?.map((i) => '${i['quantity']}x ${i['name']}').join(', ') ?? '';
+                                  final time = det['created_at'] != null ? det['created_at'].toString().split(' ').last.substring(0, 5) : '';
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 8.0),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(time, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(itemsStr.isEmpty ? 'Pesanan Custom' : itemsStr, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text('Rp ${det['total_amount']}', style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  );
+                                } else {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 8.0),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text('${det['sub_period_date']}', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                                        Text('Rp ${det['sub_total_revenue']}', style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  );
+                                }
+                              })),
+                              const Divider(color: Colors.white24, height: 24),
+                            ],
+
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -99,7 +141,7 @@ class OwnerReportScreen extends ConsumerWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Total Pendapatan:', style: TextStyle(color: Colors.white, fontSize: 16)),
+                                Text(selectedPeriod == 'daily' ? 'Total Pendapatan Hari Ini:' : (selectedPeriod == 'monthly' ? 'Total Pendapatan Bulan Ini:' : 'Total Pendapatan Tahun Ini:'), style: const TextStyle(color: Colors.white, fontSize: 16)),
                                 Text('Rp ${row['total_revenue']}', style: const TextStyle(color: AppTheme.primaryColor, fontSize: 18, fontWeight: FontWeight.bold)),
                               ],
                             ),

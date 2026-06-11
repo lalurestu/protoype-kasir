@@ -712,6 +712,70 @@ try {
             $r['total_revenue'] = (double)$r['total_revenue'];
             $r['total_cash'] = (double)$r['total_cash'];
             $r['total_qris'] = (double)$r['total_qris'];
+
+            if ($period === 'daily') {
+                $stmtDet = $pdo->prepare("
+                    SELECT t.id, t.created_at, t.total_amount, t.payment_method
+                    FROM transactions t
+                    JOIN stores s ON t.store_id = s.id
+                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
+                    ORDER BY t.created_at DESC
+                ");
+                $stmtDet->execute([$user['id'], $dateFormat, $r['period_date']]);
+                $details = $stmtDet->fetchAll();
+                
+                foreach ($details as &$d) {
+                    $d['total_amount'] = (double)$d['total_amount'];
+                    $stmtItems = $pdo->prepare("
+                        SELECT ti.quantity, ti.price, m.name 
+                        FROM transaction_items ti
+                        JOIN menus m ON ti.menu_id = m.id
+                        WHERE ti.transaction_id = ?
+                    ");
+                    $stmtItems->execute([$d['id']]);
+                    $items = $stmtItems->fetchAll();
+                    foreach ($items as &$it) {
+                        $it['quantity'] = (int)$it['quantity'];
+                        $it['price'] = (double)$it['price'];
+                    }
+                    $d['items'] = $items;
+                }
+                $r['details'] = $details;
+            } elseif ($period === 'monthly') {
+                $stmtDet = $pdo->prepare("
+                    SELECT 
+                        DATE_FORMAT(t.created_at, '%Y-%m-%d') as sub_period_date,
+                        SUM(t.total_amount) as sub_total_revenue
+                    FROM transactions t
+                    JOIN stores s ON t.store_id = s.id
+                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
+                    GROUP BY sub_period_date
+                    ORDER BY sub_period_date DESC
+                ");
+                $stmtDet->execute([$user['id'], $dateFormat, $r['period_date']]);
+                $details = $stmtDet->fetchAll();
+                foreach ($details as &$d) {
+                    $d['sub_total_revenue'] = (double)$d['sub_total_revenue'];
+                }
+                $r['details'] = $details;
+            } elseif ($period === 'yearly') {
+                $stmtDet = $pdo->prepare("
+                    SELECT 
+                        DATE_FORMAT(t.created_at, '%Y-%m') as sub_period_date,
+                        SUM(t.total_amount) as sub_total_revenue
+                    FROM transactions t
+                    JOIN stores s ON t.store_id = s.id
+                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
+                    GROUP BY sub_period_date
+                    ORDER BY sub_period_date DESC
+                ");
+                $stmtDet->execute([$user['id'], $dateFormat, $r['period_date']]);
+                $details = $stmtDet->fetchAll();
+                foreach ($details as &$d) {
+                    $d['sub_total_revenue'] = (double)$d['sub_total_revenue'];
+                }
+                $r['details'] = $details;
+            }
         }
 
         echo json_encode($reports);

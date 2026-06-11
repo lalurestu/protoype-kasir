@@ -24,12 +24,25 @@ class AdminDashboardScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('Welcome Super Admin!'),
+            const Text('Welcome Super Admin!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 // Manage Tenants
               },
               child: const Text('Approve Tenants'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                ref.read(authProvider.notifier).logout();
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('Keluar (Logout)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
