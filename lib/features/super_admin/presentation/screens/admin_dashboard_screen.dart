@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class AdminDashboardScreen extends ConsumerWidget {
@@ -24,7 +23,8 @@ class AdminDashboardScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('Welcome Super Admin!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text('Welcome Super Admin!',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {

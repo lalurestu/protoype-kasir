@@ -42,18 +42,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Icon(Icons.storefront, size: 64, color: AppTheme.primaryColor),
+                        const Icon(Icons.storefront,
+                            size: 64, color: AppTheme.primaryColor),
                         const SizedBox(height: 24),
                         const Text(
                           'Selamat Datang',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+                          style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
                         ),
                         const SizedBox(height: 8),
                         const Text(
                           'Masuk untuk melanjutkan',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+                          style: TextStyle(
+                              fontSize: 16, color: AppTheme.textSecondary),
                         ),
                         const SizedBox(height: 32),
                         if (_errorMsg != null)
@@ -61,13 +66,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             padding: const EdgeInsets.all(12),
                             margin: const EdgeInsets.only(bottom: 24),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.error.withOpacity(0.1),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .error
+                                  .withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Theme.of(context).colorScheme.error),
+                              border: Border.all(
+                                  color: Theme.of(context).colorScheme.error),
                             ),
                             child: Text(
                               _errorMsg!,
-                              style: TextStyle(color: Theme.of(context).colorScheme.error),
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error),
                             ),
                           ),
                         TextField(
@@ -75,11 +85,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
                             labelText: 'Alamat Email',
-                            labelStyle: const TextStyle(color: AppTheme.textSecondary),
-                            prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.textSecondary),
+                            labelStyle:
+                                const TextStyle(color: AppTheme.textSecondary),
+                            prefixIcon: const Icon(Icons.email_outlined,
+                                color: AppTheme.textSecondary),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppTheme.primaryColor.withOpacity(0.3)),
+                              borderSide: BorderSide(
+                                  color:
+                                      AppTheme.primaryColor.withOpacity(0.3)),
                             ),
                           ),
                           keyboardType: TextInputType.emailAddress,
@@ -90,11 +104,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
                             labelText: 'Kata Sandi',
-                            labelStyle: const TextStyle(color: AppTheme.textSecondary),
-                            prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.textSecondary),
+                            labelStyle:
+                                const TextStyle(color: AppTheme.textSecondary),
+                            prefixIcon: const Icon(Icons.lock_outline,
+                                color: AppTheme.textSecondary),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppTheme.primaryColor.withOpacity(0.3)),
+                              borderSide: BorderSide(
+                                  color:
+                                      AppTheme.primaryColor.withOpacity(0.3)),
                             ),
                           ),
                           obscureText: true,
@@ -105,11 +123,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _handleLogin,
                             style: ElevatedButton.styleFrom(
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
                             ),
                             child: _isLoading
-                                ? const CircularProgressIndicator(color: Colors.white)
-                                : const Text('Masuk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white)
+                                : const Text('Masuk',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white)),
                           ),
                         ),
                       ],
@@ -131,16 +155,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      await ref.read(authProvider.notifier).login(_emailCtrl.text.trim(), _passCtrl.text);
+      await ref
+          .read(authProvider.notifier)
+          .login(_emailCtrl.text.trim(), _passCtrl.text);
     } catch (e) {
       setState(() {
         if (e is DioException) {
           if (e.response?.statusCode == 401) {
             _errorMsg = 'Email atau kata sandi salah.';
-          } else if (e.response?.data != null && e.response?.data is Map && e.response!.data['error'] != null) {
-             _errorMsg = e.response!.data['error'].toString();
+          } else if (e.response?.data != null &&
+              e.response?.data is Map &&
+              e.response!.data['error'] != null) {
+            _errorMsg = e.response!.data['error'].toString();
           } else {
-             _errorMsg = 'Terjadi kesalahan jaringan atau server.';
+            _errorMsg = 'Terjadi kesalahan jaringan atau server.';
           }
         } else {
           _errorMsg = e.toString();

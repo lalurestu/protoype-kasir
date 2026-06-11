@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/models/menu_model.dart';
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
 import '../../../../core/network/api_client.dart';
@@ -25,7 +24,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth > 800;
-        
+
         return Scaffold(
           appBar: AppBar(
             title: const Text('Pembayaran'),
@@ -33,7 +32,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             actions: [
               TextButton.icon(
                 icon: const Icon(Icons.delete_outline, color: AppTheme.error),
-                label: const Text('Kosongkan Keranjang', style: TextStyle(color: AppTheme.error)),
+                label: const Text('Kosongkan Keranjang',
+                    style: TextStyle(color: AppTheme.error)),
                 onPressed: () => ref.read(cartProvider.notifier).clearCart(),
               ),
               const SizedBox(width: 16),
@@ -50,9 +50,11 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                 ),
             ],
           ),
-          endDrawer: !isDesktop ? Drawer(
-            child: SafeArea(child: _buildCartPane()),
-          ) : null,
+          endDrawer: !isDesktop
+              ? Drawer(
+                  child: SafeArea(child: _buildCartPane()),
+                )
+              : null,
           body: isDesktop
               ? Row(
                   children: [
@@ -70,13 +72,14 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     final menusAsync = ref.watch(menusProvider);
     final cartItems = ref.watch(cartProvider);
     final cartNotifier = ref.read(cartProvider.notifier);
-    
+
     return Container(
       color: AppTheme.backgroundDark,
       padding: const EdgeInsets.all(16),
       child: menusAsync.when(
         data: (menus) {
-          if (menus.isEmpty) return const Center(child: Text('Menu tidak tersedia'));
+          if (menus.isEmpty)
+            return const Center(child: Text('Menu tidak tersedia'));
           return GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 200,
@@ -87,44 +90,57 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             itemCount: menus.length,
             itemBuilder: (context, index) {
               final menu = menus[index];
-              final cartItemIndex = cartItems.indexWhere((item) => item.menu.id == menu.id);
-              final quantity = cartItemIndex >= 0 ? cartItems[cartItemIndex].quantity : 0;
+              final cartItemIndex =
+                  cartItems.indexWhere((item) => item.menu.id == menu.id);
+              final quantity =
+                  cartItemIndex >= 0 ? cartItems[cartItemIndex].quantity : 0;
 
               return InkWell(
                 onTap: () => cartNotifier.addItem(menu),
                 borderRadius: BorderRadius.circular(16),
                 child: Badge(
                   isLabelVisible: quantity > 0,
-                  label: Text('$quantity', style: const TextStyle(fontSize: 14)),
+                  label:
+                      Text('$quantity', style: const TextStyle(fontSize: 14)),
                   backgroundColor: AppTheme.secondaryColor,
                   offset: const Offset(-12, 12),
                   child: Card(
                     child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withOpacity(0.1),
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(16)),
+                            ),
+                            child: const Icon(Icons.fastfood,
+                                size: 48, color: AppTheme.primaryColor),
                           ),
-                          child: const Icon(Icons.fastfood, size: 48, color: AppTheme.primaryColor),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(menu.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 4),
-                            Text('Rp ${menu.price}', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.w600)),
-                          ],
+                        Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(menu.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 4),
+                              Text('Rp ${menu.price}',
+                                  style: const TextStyle(
+                                      color: AppTheme.secondaryColor,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
                 ),
               );
             },
@@ -139,7 +155,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
   Widget _buildCartPane() {
     final cartItems = ref.watch(cartProvider);
     final cartNotifier = ref.read(cartProvider.notifier);
-    final totalAmount = cartItems.fold(0.0, (sum, item) => sum + (item.menu.price * item.quantity));
+    final totalAmount = cartItems.fold(
+        0.0, (sum, item) => sum + (item.menu.price * item.quantity));
 
     return Container(
       width: 350,
@@ -153,28 +170,37 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             padding: const EdgeInsets.all(24),
             width: double.infinity,
             color: AppTheme.primaryColor.withOpacity(0.1),
-            child: const Text('Pesanan Saat Ini', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            child: const Text('Pesanan Saat Ini',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           ),
           Expanded(
             child: cartItems.isEmpty
-                ? const Center(child: Text('Keranjang kosong', style: TextStyle(color: AppTheme.textSecondary)))
+                ? const Center(
+                    child: Text('Keranjang kosong',
+                        style: TextStyle(color: AppTheme.textSecondary)))
                 : ListView.builder(
                     itemCount: cartItems.length,
                     itemBuilder: (context, index) {
                       final item = cartItems[index];
                       return ListTile(
                         title: Text(item.menu.name),
-                        subtitle: Text('Rp ${item.menu.price} x ${item.quantity}'),
+                        subtitle:
+                            Text('Rp ${item.menu.price} x ${item.quantity}'),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, color: AppTheme.textSecondary),
-                              onPressed: () => cartNotifier.removeItem(item.menu.id),
+                              icon: const Icon(Icons.remove_circle_outline,
+                                  color: AppTheme.textSecondary),
+                              onPressed: () =>
+                                  cartNotifier.removeItem(item.menu.id),
                             ),
-                            Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${item.quantity}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
                             IconButton(
-                              icon: const Icon(Icons.add_circle_outline, color: AppTheme.primaryColor),
+                              icon: const Icon(Icons.add_circle_outline,
+                                  color: AppTheme.primaryColor),
                               onPressed: () => cartNotifier.addItem(item.menu),
                             ),
                           ],
@@ -194,8 +220,14 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Total:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    Text('Rp $totalAmount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor)),
+                    const Text('Total:',
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text('Rp $totalAmount',
+                        style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.secondaryColor)),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -203,10 +235,13 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: (cartItems.isEmpty || _isProcessing) ? null : () => _showPaymentDialog(context, totalAmount),
-                    child: _isProcessing 
+                    onPressed: (cartItems.isEmpty || _isProcessing)
+                        ? null
+                        : () => _showPaymentDialog(context, totalAmount),
+                    child: _isProcessing
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Proses Pembayaran', style: TextStyle(fontSize: 18)),
+                        : const Text('Proses Pembayaran',
+                            style: TextStyle(fontSize: 18)),
                   ),
                 ),
               ],
@@ -223,15 +258,22 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surfaceDark,
-        title: const Text('Metode Pembayaran', style: TextStyle(color: Colors.white)),
-        content: const Text('Metode apa yang digunakan pelanggan untuk membayar pesanan ini?', style: TextStyle(color: AppTheme.textSecondary)),
+        title: const Text('Metode Pembayaran',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+            'Metode apa yang digunakan pelanggan untuk membayar pesanan ini?',
+            style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _processCheckout(totalAmount, 'cash');
             },
-            child: const Text('TUNAI', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+            child: const Text('TUNAI',
+                style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
@@ -239,7 +281,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               Navigator.pop(context);
               _processMidtransQris(totalAmount);
             },
-            child: const Text('QRIS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            child: const Text('QRIS',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
         ],
       ),
@@ -250,7 +293,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     setState(() => _isProcessing = true);
     final dio = ref.read(dioProvider);
     try {
-      final res = await dio.post('/qris/generate', data: {'total_amount': totalAmount});
+      final res =
+          await dio.post('/qris/generate', data: {'total_amount': totalAmount});
       if (res.data != null && res.data['qr_url'] != null) {
         final orderId = res.data['order_id'];
         final qrUrl = res.data['qr_url'];
@@ -262,82 +306,113 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
         throw Exception('Gagal mendapatkan QR dari Midtrans');
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Gagal: $e')));
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  void _showQrisDialog(BuildContext context, String orderId, String qrUrl, String qrString, double totalAmount) {
+  void _showQrisDialog(BuildContext context, String orderId, String qrUrl,
+      String qrString, double totalAmount) {
     bool isChecking = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: AppTheme.surfaceDark,
-              title: const Text('Scan QRIS', style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Rp $totalAmount', style: const TextStyle(color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                    child: Image.network(qrUrl, width: 250, height: 250, fit: BoxFit.contain, errorBuilder: (c,e,s) => const Icon(Icons.broken_image, size: 100)),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Minta pelanggan scan QR Code di atas menggunakan aplikasi e-Wallet atau M-Banking.', style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
-                  if (qrString.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    const Text('QR String (Buat Simulator):', style: TextStyle(color: Colors.white, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    SelectableText(qrString, style: const TextStyle(color: Colors.grey, fontSize: 10), textAlign: TextAlign.center),
-                  ],
-                  const SizedBox(height: 24),
-                  if (isChecking)
-                    const CircularProgressIndicator()
-                  else
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondaryColor, minimumSize: const Size(double.infinity, 50)),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Cek Status Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      onPressed: () async {
-                        setDialogState(() => isChecking = true);
-                        try {
-                          final dio = ref.read(dioProvider);
-                          final res = await dio.get('/qris/status/$orderId');
-                          final status = res.data['status'];
-                          if (status == 'settlement' || status == 'capture') {
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                              _processCheckout(totalAmount, 'qris');
-                            }
-                          } else {
-                            if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Status: $status. Pelanggan belum membayar.')));
-                          }
-                        } catch (e) {
-                          if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Gagal cek status: $e')));
-                        } finally {
-                          if (ctx.mounted) setDialogState(() => isChecking = false);
-                        }
-                      },
-                    ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isChecking ? null : () => Navigator.pop(ctx),
-                  child: const Text('Batal', style: TextStyle(color: AppTheme.error)),
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppTheme.surfaceDark,
+            title: const Text('Scan QRIS',
+                style: TextStyle(color: Colors.white),
+                textAlign: TextAlign.center),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Rp $totalAmount',
+                    style: const TextStyle(
+                        color: AppTheme.secondaryColor,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16)),
+                  child: Image.network(qrUrl,
+                      width: 250,
+                      height: 250,
+                      fit: BoxFit.contain,
+                      errorBuilder: (c, e, s) =>
+                          const Icon(Icons.broken_image, size: 100)),
                 ),
+                const SizedBox(height: 16),
+                const Text(
+                    'Minta pelanggan scan QR Code di atas menggunakan aplikasi e-Wallet atau M-Banking.',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                    textAlign: TextAlign.center),
+                if (qrString.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text('QR String (Buat Simulator):',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  SelectableText(qrString,
+                      style: const TextStyle(color: Colors.grey, fontSize: 10),
+                      textAlign: TextAlign.center),
+                ],
+                const SizedBox(height: 24),
+                if (isChecking)
+                  const CircularProgressIndicator()
+                else
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.secondaryColor,
+                        minimumSize: const Size(double.infinity, 50)),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Cek Status Pembayaran',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    onPressed: () async {
+                      setDialogState(() => isChecking = true);
+                      try {
+                        final dio = ref.read(dioProvider);
+                        final res = await dio.get('/qris/status/$orderId');
+                        final status = res.data['status'];
+                        if (status == 'settlement' || status == 'capture') {
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                            _processCheckout(totalAmount, 'qris');
+                          }
+                        } else {
+                          if (ctx.mounted)
+                            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                                content: Text(
+                                    'Status: $status. Pelanggan belum membayar.')));
+                        }
+                      } catch (e) {
+                        if (ctx.mounted)
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(content: Text('Gagal cek status: $e')));
+                      } finally {
+                        if (ctx.mounted)
+                          setDialogState(() => isChecking = false);
+                      }
+                    },
+                  ),
               ],
-            );
-          }
-        );
+            ),
+            actions: [
+              TextButton(
+                onPressed: isChecking ? null : () => Navigator.pop(ctx),
+                child: const Text('Batal',
+                    style: TextStyle(color: AppTheme.error)),
+              ),
+            ],
+          );
+        });
       },
     );
   }
@@ -348,32 +423,42 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
       final dio = ref.read(dioProvider);
       final localDb = ref.read(localDbProvider);
       final cartItems = ref.read(cartProvider);
-      
-      final itemsData = cartItems.map((item) => {
-        'menu_id': item.menu.id,
-        'quantity': item.quantity,
-        'price': item.menu.price,
-      }).toList();
+
+      final itemsData = cartItems
+          .map((item) => {
+                'menu_id': item.menu.id,
+                'quantity': item.quantity,
+                'price': item.menu.price,
+              })
+          .toList();
 
       final txData = {
         'total_amount': total,
         'payment_method': paymentMethod,
         'items': itemsData,
-        'created_at': DateTime.now().toIso8601String().replaceFirst('T', ' ').substring(0, 19),
+        'created_at': DateTime.now()
+            .toIso8601String()
+            .replaceFirst('T', ' ')
+            .substring(0, 19),
       };
 
       try {
         await dio.post('/checkout', data: txData);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pembayaran Berhasil! (Online)'), backgroundColor: Colors.green),
+            const SnackBar(
+                content: Text('Pembayaran Berhasil! (Online)'),
+                backgroundColor: Colors.green),
           );
         }
       } catch (e) {
         await localDb.savePendingTransaction(txData);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sinyal Hilang! Pembayaran Disimpan ke Offline Queue.'), backgroundColor: Colors.orange),
+            const SnackBar(
+                content: Text(
+                    'Sinyal Hilang! Pembayaran Disimpan ke Offline Queue.'),
+                backgroundColor: Colors.orange),
           );
         }
       }
@@ -382,7 +467,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e'), backgroundColor: AppTheme.error),
+          SnackBar(
+              content: Text('Failed: $e'), backgroundColor: AppTheme.error),
         );
       }
     } finally {
