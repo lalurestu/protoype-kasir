@@ -1,5 +1,5 @@
 <?php
-// api/index.php
+// api/index.php - UPDATED with Stock, Shift, CRM, Discount, Tax support
 
 // 1. Handle CORS (Cross-Origin Resource Sharing)
 header("Access-Control-Allow-Origin: *");
@@ -66,6 +66,11 @@ function getAuthUser($pdo) {
     return $user;
 }
 
+// Helper: Format currency
+function formatRupiah($amount) {
+    return (double)$amount;
+}
+
 try {
     $pdo = getDBConnection();
 
@@ -82,7 +87,10 @@ try {
     $route = rtrim($route, '/');
     $method = $_SERVER['REQUEST_METHOD'];
 
-    // 3. Router
+    // =========================================================================
+    // AUTH ROUTES
+    // =========================================================================
+
     if ($method === 'POST' && $route === '/api/auth/register-owner') {
         $input = json_decode(file_get_contents('php://input'), true);
         if (empty($input['name']) || empty($input['email']) || empty($input['password']) || empty($input['verification_code'])) {
@@ -91,7 +99,6 @@ try {
             exit;
         }
 
-        // Verify code
         $stmtCode = $pdo->prepare("SELECT id FROM verification_codes WHERE code = ? AND is_used = FALSE LIMIT 1");
         $stmtCode->execute([$input['verification_code']]);
         $verif = $stmtCode->fetch();
@@ -101,7 +108,6 @@ try {
             exit;
         }
 
-        // Check uniqueness
         $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
         $stmt->execute([$input['email']]);
         if ($stmt->fetch()) {
@@ -126,13 +132,11 @@ try {
             exit;
         }
 
-        // Fetch user
         $stmt = $pdo->prepare("SELECT id, name, email, role, store_id FROM users WHERE id = ?");
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
         $user['id'] = (int)$user['id'];
 
-        // Token
         $token = bin2hex(random_bytes(32));
         $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 2 HOUR))");
         $stmtToken->execute([$userId, $token]);
@@ -172,7 +176,6 @@ try {
         }
 
         if ($user['role'] === 'kasir' && $user['store_id']) {
-            // Check if owner is disabled
             $stmtOwner = $pdo->prepare("SELECT u.is_active FROM users u JOIN stores s ON u.id = s.owner_id WHERE s.id = ? LIMIT 1");
             $stmtOwner->execute([$user['store_id']]);
             $owner = $stmtOwner->fetch();
@@ -192,7 +195,6 @@ try {
             "tenant_id" => $user['tenant_id'] !== null ? (int)$user['tenant_id'] : null,
         ];
 
-        // Generate Token
         $token = bin2hex(random_bytes(32));
         $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 2 HOUR))");
         $stmtToken->execute([$user['id'], $token]);
@@ -231,23 +233,28 @@ try {
         echo json_encode($userResponse);
         exit;
 
+    // =========================================================================
+    // MENU ROUTES
+    // =========================================================================
+
     } elseif ($method === 'GET' && $route === '/api/store/menus') {
         $user = getAuthUser($pdo);
 
         if ($user['role'] === 'super_admin') {
-            $stmt = $pdo->query("SELECT * FROM menus");
+            $stmt = $pdo->query("SELECT m.*, s.quantity as stock, s.min_stock FROM menus m LEFT JOIN stock s ON s.menu_id = m.id");
             $menus = $stmt->fetchAll();
         } elseif ($user['role'] === 'owner') {
             $stmt = $pdo->prepare("
-                SELECT m.* FROM menus m
-                JOIN stores s ON m.store_id = s.id
-                WHERE s.owner_id = ?
+                SELECT m.*, s.quantity as stock, s.min_stock FROM menus m
+                LEFT JOIN stock s ON s.menu_id = m.id
+                JOIN stores st ON m.store_id = st.id
+                WHERE st.owner_id = ?
             ");
             $stmt->execute([$user['id']]);
             $menus = $stmt->fetchAll();
         } else {
             $storeId = $user['store_id'] ?? 1;
-            $stmt = $pdo->prepare("SELECT * FROM menus WHERE store_id = ?");
+            $stmt = $pdo->prepare("SELECT m.*, s.quantity as stock, s.min_stock FROM menus m LEFT JOIN stock s ON s.menu_id = m.id WHERE m.store_id = ?");
             $stmt->execute([$storeId]);
             $menus = $stmt->fetchAll();
         }
@@ -256,6 +263,9 @@ try {
             $menu['id'] = (int)$menu['id'];
             $menu['store_id'] = (int)$menu['store_id'];
             $menu['price'] = (double)$menu['price'];
+            $menu['is_available'] = (bool)($menu['is_available'] ?? true);
+            $menu['stock'] = $menu['stock'] !== null ? (int)$menu['stock'] : null;
+            $menu['min_stock'] = $menu['min_stock'] !== null ? (int)$menu['min_stock'] : 5;
         }
 
         http_response_code(200);
@@ -271,7 +281,7 @@ try {
         }
 
         $input = json_decode(file_get_contents('php://input'), true);
-        if (empty($input['name']) || empty($input['price']) || empty($input['category'])) {
+        if (empty($input['name']) || !isset($input['price']) || empty($input['category'])) {
             http_response_code(400);
             echo json_encode(["error" => "Name, price, and category are required"]);
             exit;
@@ -285,17 +295,36 @@ try {
             $storeId = $store ? (int)$store['id'] : 1;
         }
 
-        $stmt = $pdo->prepare("INSERT INTO menus (store_id, name, price, category) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$storeId, $input['name'], $input['price'], $input['category']]);
-        $menuId = $pdo->lastInsertId();
+        $isAvailable = isset($input['is_available']) ? (bool)$input['is_available'] : true;
+        $description = $input['description'] ?? null;
+        $initialStock = isset($input['initial_stock']) ? (int)$input['initial_stock'] : 50;
+        $minStock = isset($input['min_stock']) ? (int)$input['min_stock'] : 5;
 
-        $stmt = $pdo->prepare("SELECT * FROM menus WHERE id = ?");
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("INSERT INTO menus (store_id, name, price, category, is_available, description) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$storeId, $input['name'], $input['price'], $input['category'], $isAvailable, $description]);
+            $menuId = $pdo->lastInsertId();
+
+            // Auto-create stock record
+            $pdo->prepare("INSERT INTO stock (menu_id, quantity, min_stock) VALUES (?, ?, ?)")
+                ->execute([$menuId, $initialStock, $minStock]);
+
+            $pdo->commit();
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(["error" => "Failed to create menu: " . $e->getMessage()]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare("SELECT m.*, s.quantity as stock, s.min_stock FROM menus m LEFT JOIN stock s ON s.menu_id = m.id WHERE m.id = ?");
         $stmt->execute([$menuId]);
         $newMenu = $stmt->fetch();
-
         $newMenu['id'] = (int)$newMenu['id'];
         $newMenu['store_id'] = (int)$newMenu['store_id'];
         $newMenu['price'] = (double)$newMenu['price'];
+        $newMenu['is_available'] = (bool)$newMenu['is_available'];
 
         http_response_code(201);
         echo json_encode($newMenu);
@@ -311,14 +340,22 @@ try {
 
         $menuId = $matches[1];
         $input = json_decode(file_get_contents('php://input'), true);
-        if (empty($input['name']) || empty($input['price']) || empty($input['category'])) {
+        if (empty($input['name']) || !isset($input['price']) || empty($input['category'])) {
             http_response_code(400);
             echo json_encode(["error" => "Name, price, and category are required"]);
             exit;
         }
 
-        $stmt = $pdo->prepare("UPDATE menus SET name = ?, price = ?, category = ? WHERE id = ?");
-        $stmt->execute([$input['name'], $input['price'], $input['category'], $menuId]);
+        $isAvailable = isset($input['is_available']) ? (bool)$input['is_available'] : true;
+        $description = $input['description'] ?? null;
+
+        $stmt = $pdo->prepare("UPDATE menus SET name = ?, price = ?, category = ?, is_available = ?, description = ? WHERE id = ?");
+        $stmt->execute([$input['name'], $input['price'], $input['category'], $isAvailable, $description, $menuId]);
+
+        // Update min_stock if provided
+        if (isset($input['min_stock'])) {
+            $pdo->prepare("UPDATE stock SET min_stock = ? WHERE menu_id = ?")->execute([$input['min_stock'], $menuId]);
+        }
 
         echo json_encode(["message" => "Menu updated successfully"]);
         exit;
@@ -338,6 +375,389 @@ try {
         echo json_encode(["message" => "Menu deleted successfully"]);
         exit;
 
+    // =========================================================================
+    // STOCK ROUTES
+    // =========================================================================
+
+    } elseif ($method === 'GET' && $route === '/api/owner/stock') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner' && $user['role'] !== 'super_admin') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        if ($user['role'] === 'super_admin') {
+            $stmt = $pdo->query("
+                SELECT s.*, m.name as menu_name, m.category as menu_category, m.price as menu_price
+                FROM stock s JOIN menus m ON s.menu_id = m.id
+                ORDER BY s.quantity ASC
+            ");
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT s.*, m.name as menu_name, m.category as menu_category, m.price as menu_price
+                FROM stock s
+                JOIN menus m ON s.menu_id = m.id
+                JOIN stores st ON m.store_id = st.id
+                WHERE st.owner_id = ?
+                ORDER BY s.quantity ASC
+            ");
+            $stmt->execute([$user['id']]);
+        }
+
+        $stocks = $stmt->fetchAll();
+        foreach ($stocks as &$stock) {
+            $stock['id'] = (int)$stock['id'];
+            $stock['menu_id'] = (int)$stock['menu_id'];
+            $stock['quantity'] = (int)$stock['quantity'];
+            $stock['min_stock'] = (int)$stock['min_stock'];
+            $stock['menu_price'] = (double)$stock['menu_price'];
+        }
+
+        echo json_encode($stocks);
+        exit;
+
+    } elseif ($method === 'PUT' && preg_match('/^\/api\/owner\/stock\/(\d+)$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner' && $user['role'] !== 'super_admin') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        $menuId = $matches[1];
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (!isset($input['quantity'])) {
+            http_response_code(400); echo json_encode(['error' => 'quantity is required']); exit;
+        }
+
+        $pdo->prepare("UPDATE stock SET quantity = ?, min_stock = COALESCE(?, min_stock) WHERE menu_id = ?")
+            ->execute([$input['quantity'], $input['min_stock'] ?? null, $menuId]);
+
+        echo json_encode(['message' => 'Stok berhasil diperbarui']);
+        exit;
+
+    } elseif ($method === 'POST' && preg_match('/^\/api\/owner\/stock\/(\d+)\/(add|subtract)$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner' && $user['role'] !== 'super_admin') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        $menuId = $matches[1];
+        $action = $matches[2]; // 'add' atau 'subtract'
+        $input = json_decode(file_get_contents('php://input'), true);
+        $amount = (int)($input['amount'] ?? 0);
+
+        if ($amount <= 0) {
+            http_response_code(400); echo json_encode(['error' => 'amount must be positive']); exit;
+        }
+
+        if ($action === 'add') {
+            $pdo->prepare("UPDATE stock SET quantity = quantity + ? WHERE menu_id = ?")->execute([$amount, $menuId]);
+        } else {
+            $pdo->prepare("UPDATE stock SET quantity = GREATEST(0, quantity - ?) WHERE menu_id = ?")->execute([$amount, $menuId]);
+        }
+
+        $stmt = $pdo->prepare("SELECT quantity FROM stock WHERE menu_id = ?");
+        $stmt->execute([$menuId]);
+        $newStock = $stmt->fetch();
+
+        echo json_encode(['message' => 'Stok diperbarui', 'quantity' => (int)$newStock['quantity']]);
+        exit;
+
+    } elseif ($method === 'GET' && $route === '/api/owner/stock/alerts') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner' && $user['role'] !== 'super_admin') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT s.*, m.name as menu_name, m.category as menu_category
+            FROM stock s
+            JOIN menus m ON s.menu_id = m.id
+            JOIN stores st ON m.store_id = st.id
+            WHERE st.owner_id = ? AND s.quantity <= s.min_stock
+            ORDER BY s.quantity ASC
+        ");
+        $stmt->execute([$user['id']]);
+        $alerts = $stmt->fetchAll();
+
+        foreach ($alerts as &$a) {
+            $a['id'] = (int)$a['id'];
+            $a['menu_id'] = (int)$a['menu_id'];
+            $a['quantity'] = (int)$a['quantity'];
+            $a['min_stock'] = (int)$a['min_stock'];
+        }
+
+        echo json_encode($alerts);
+        exit;
+
+    // =========================================================================
+    // SHIFT ROUTES
+    // =========================================================================
+
+    } elseif ($method === 'GET' && $route === '/api/shifts/current') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'kasir') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT sh.*, u.name as kasir_name
+            FROM shifts sh
+            JOIN users u ON sh.kasir_id = u.id
+            WHERE sh.kasir_id = ? AND sh.status = 'open'
+            ORDER BY sh.opened_at DESC LIMIT 1
+        ");
+        $stmt->execute([$user['id']]);
+        $shift = $stmt->fetch();
+
+        if (!$shift) {
+            http_response_code(404); echo json_encode(['error' => 'No active shift']); exit;
+        }
+
+        $shift['id'] = (int)$shift['id'];
+        $shift['kasir_id'] = (int)$shift['kasir_id'];
+        $shift['store_id'] = (int)$shift['store_id'];
+        $shift['opening_cash'] = (double)$shift['opening_cash'];
+        $shift['total_sales'] = (double)$shift['total_sales'];
+        $shift['total_transactions'] = (int)$shift['total_transactions'];
+
+        echo json_encode($shift);
+        exit;
+
+    } elseif ($method === 'POST' && $route === '/api/shifts/open') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'kasir') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        // Check if already has open shift
+        $stmtCheck = $pdo->prepare("SELECT id FROM shifts WHERE kasir_id = ? AND status = 'open' LIMIT 1");
+        $stmtCheck->execute([$user['id']]);
+        if ($stmtCheck->fetch()) {
+            http_response_code(400); echo json_encode(['error' => 'Anda sudah memiliki shift yang sedang aktif']); exit;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        $openingCash = (double)($input['opening_cash'] ?? 0);
+        $storeId = $user['store_id'] ?? 1;
+
+        $pdo->prepare("INSERT INTO shifts (kasir_id, store_id, opening_cash) VALUES (?, ?, ?)")
+            ->execute([$user['id'], $storeId, $openingCash]);
+        $shiftId = $pdo->lastInsertId();
+
+        $stmt = $pdo->prepare("SELECT sh.*, u.name as kasir_name FROM shifts sh JOIN users u ON sh.kasir_id = u.id WHERE sh.id = ?");
+        $stmt->execute([$shiftId]);
+        $shift = $stmt->fetch();
+
+        $shift['id'] = (int)$shift['id'];
+        $shift['kasir_id'] = (int)$shift['kasir_id'];
+        $shift['store_id'] = (int)$shift['store_id'];
+        $shift['opening_cash'] = (double)$shift['opening_cash'];
+        $shift['total_sales'] = (double)$shift['total_sales'];
+        $shift['total_transactions'] = (int)$shift['total_transactions'];
+
+        echo json_encode(['message' => 'Shift berhasil dibuka', 'shift' => $shift]);
+        exit;
+
+    } elseif ($method === 'POST' && $route === '/api/shifts/close') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'kasir') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        $shiftId = (int)($input['shift_id'] ?? 0);
+        $closingCash = (double)($input['closing_cash'] ?? 0);
+        $note = $input['note'] ?? null;
+
+        if (!$shiftId) {
+            http_response_code(400); echo json_encode(['error' => 'shift_id is required']); exit;
+        }
+
+        // Calculate total sales in this shift
+        $stmtSales = $pdo->prepare("SELECT SUM(total_amount) as total, COUNT(*) as count FROM transactions WHERE shift_id = ?");
+        $stmtSales->execute([$shiftId]);
+        $salesData = $stmtSales->fetch();
+        $totalSales = (double)($salesData['total'] ?? 0);
+        $totalTx = (int)($salesData['count'] ?? 0);
+
+        $pdo->prepare("
+            UPDATE shifts SET status = 'closed', closed_at = NOW(), closing_cash = ?, note = ?, total_sales = ?, total_transactions = ?
+            WHERE id = ? AND kasir_id = ? AND status = 'open'
+        ")->execute([$closingCash, $note, $totalSales, $totalTx, $shiftId, $user['id']]);
+
+        $stmt = $pdo->prepare("SELECT sh.*, u.name as kasir_name FROM shifts sh JOIN users u ON sh.kasir_id = u.id WHERE sh.id = ?");
+        $stmt->execute([$shiftId]);
+        $shift = $stmt->fetch();
+
+        if (!$shift) {
+            http_response_code(404); echo json_encode(['error' => 'Shift tidak ditemukan atau sudah ditutup']); exit;
+        }
+
+        $shift['id'] = (int)$shift['id'];
+        $shift['opening_cash'] = (double)$shift['opening_cash'];
+        $shift['closing_cash'] = (double)$shift['closing_cash'];
+        $shift['total_sales'] = (double)$shift['total_sales'];
+        $shift['total_transactions'] = (int)$shift['total_transactions'];
+
+        echo json_encode(['message' => 'Shift berhasil ditutup', 'shift' => $shift]);
+        exit;
+
+    } elseif ($method === 'GET' && $route === '/api/owner/shifts') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner' && $user['role'] !== 'super_admin') {
+            http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT sh.*, u.name as kasir_name
+            FROM shifts sh
+            JOIN users u ON sh.kasir_id = u.id
+            JOIN stores st ON sh.store_id = st.id
+            WHERE st.owner_id = ?
+            ORDER BY sh.opened_at DESC
+            LIMIT 100
+        ");
+        $stmt->execute([$user['id']]);
+        $shifts = $stmt->fetchAll();
+
+        foreach ($shifts as &$shift) {
+            $shift['id'] = (int)$shift['id'];
+            $shift['kasir_id'] = (int)$shift['kasir_id'];
+            $shift['opening_cash'] = (double)$shift['opening_cash'];
+            $shift['closing_cash'] = $shift['closing_cash'] !== null ? (double)$shift['closing_cash'] : null;
+            $shift['total_sales'] = (double)$shift['total_sales'];
+            $shift['total_transactions'] = (int)$shift['total_transactions'];
+        }
+
+        echo json_encode($shifts);
+        exit;
+
+    // =========================================================================
+    // CUSTOMER / CRM ROUTES
+    // =========================================================================
+
+    } elseif ($method === 'GET' && $route === '/api/customers') {
+        $user = getAuthUser($pdo);
+        $storeId = null;
+        if ($user['role'] === 'owner') {
+            $stmtStore = $pdo->prepare("SELECT id FROM stores WHERE owner_id = ? LIMIT 1");
+            $stmtStore->execute([$user['id']]);
+            $store = $stmtStore->fetch();
+            $storeId = $store ? (int)$store['id'] : null;
+        } elseif ($user['role'] === 'kasir') {
+            $storeId = $user['store_id'];
+        }
+
+        if (!$storeId) { echo json_encode([]); exit; }
+
+        $stmt = $pdo->prepare("SELECT * FROM customers WHERE store_id = ? ORDER BY total_spend DESC");
+        $stmt->execute([$storeId]);
+        $customers = $stmt->fetchAll();
+
+        foreach ($customers as &$c) {
+            $c['id'] = (int)$c['id'];
+            $c['store_id'] = (int)$c['store_id'];
+            $c['points'] = (int)$c['points'];
+            $c['total_spend'] = (double)$c['total_spend'];
+            $c['visit_count'] = (int)$c['visit_count'];
+        }
+
+        echo json_encode($customers);
+        exit;
+
+    } elseif ($method === 'POST' && $route === '/api/customers') {
+        $user = getAuthUser($pdo);
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (empty($input['name']) || empty($input['phone'])) {
+            http_response_code(400); echo json_encode(['error' => 'name and phone are required']); exit;
+        }
+
+        $storeId = null;
+        if ($user['role'] === 'owner') {
+            $stmtStore = $pdo->prepare("SELECT id FROM stores WHERE owner_id = ? LIMIT 1");
+            $stmtStore->execute([$user['id']]);
+            $store = $stmtStore->fetch();
+            $storeId = $store ? (int)$store['id'] : null;
+        } elseif ($user['role'] === 'kasir') {
+            $storeId = $user['store_id'];
+        }
+
+        if (!$storeId) { http_response_code(400); echo json_encode(['error' => 'Store not found']); exit; }
+
+        // Check duplicate phone in same store
+        $stmtDup = $pdo->prepare("SELECT id FROM customers WHERE phone = ? AND store_id = ? LIMIT 1");
+        $stmtDup->execute([$input['phone'], $storeId]);
+        if ($stmtDup->fetch()) {
+            http_response_code(400); echo json_encode(['error' => 'Nomor HP sudah terdaftar']); exit;
+        }
+
+        $pdo->prepare("INSERT INTO customers (store_id, name, phone, email) VALUES (?, ?, ?, ?)")
+            ->execute([$storeId, $input['name'], $input['phone'], $input['email'] ?? null]);
+        $custId = $pdo->lastInsertId();
+
+        $stmt = $pdo->prepare("SELECT * FROM customers WHERE id = ?");
+        $stmt->execute([$custId]);
+        $customer = $stmt->fetch();
+        $customer['id'] = (int)$customer['id'];
+
+        http_response_code(201);
+        echo json_encode($customer);
+        exit;
+
+    } elseif ($method === 'GET' && $route === '/api/customers/search') {
+        $user = getAuthUser($pdo);
+        $phone = $_GET['phone'] ?? '';
+
+        if (strlen($phone) < 4) {
+            http_response_code(400); echo json_encode(['error' => 'phone must be at least 4 characters']); exit;
+        }
+
+        $storeId = null;
+        if ($user['role'] === 'kasir') {
+            $storeId = $user['store_id'];
+        } elseif ($user['role'] === 'owner') {
+            $stmtStore = $pdo->prepare("SELECT id FROM stores WHERE owner_id = ? LIMIT 1");
+            $stmtStore->execute([$user['id']]);
+            $store = $stmtStore->fetch();
+            $storeId = $store ? (int)$store['id'] : null;
+        }
+
+        if (!$storeId) { http_response_code(404); echo json_encode(['error' => 'Not found']); exit; }
+
+        $stmt = $pdo->prepare("SELECT * FROM customers WHERE store_id = ? AND phone LIKE ? LIMIT 5");
+        $stmt->execute([$storeId, '%' . $phone . '%']);
+        $results = $stmt->fetchAll();
+
+        foreach ($results as &$c) {
+            $c['id'] = (int)$c['id'];
+            $c['points'] = (int)$c['points'];
+            $c['total_spend'] = (double)$c['total_spend'];
+            $c['visit_count'] = (int)$c['visit_count'];
+        }
+
+        if (empty($results)) {
+            http_response_code(404); echo json_encode(['error' => 'Pelanggan tidak ditemukan']); exit;
+        }
+
+        echo json_encode(count($results) === 1 ? $results[0] : $results);
+        exit;
+
+    } elseif ($method === 'PUT' && preg_match('/^\/api\/customers\/(\d+)$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        $custId = $matches[1];
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        $pdo->prepare("UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), email = COALESCE(?, email) WHERE id = ?")
+            ->execute([$input['name'] ?? null, $input['phone'] ?? null, $input['email'] ?? null, $custId]);
+
+        echo json_encode(['message' => 'Pelanggan diperbarui']);
+        exit;
+
+    // =========================================================================
+    // QRIS ROUTES
+    // =========================================================================
+
     } elseif ($method === 'POST' && $route === '/api/qris/generate') {
         $user = getAuthUser($pdo);
         $input = json_decode(file_get_contents('php://input'), true);
@@ -347,7 +767,7 @@ try {
             exit;
         }
 
-        $serverKey = 'Mid-server-pScqIkUSLacGu739R4FnTDFO'; // User's server key
+        $serverKey = 'Mid-server-pScqIkUSLacGu739R4FnTDFO';
         $orderId = 'QRIS-' . time() . '-' . rand(100, 999);
         $grossAmount = (int)$input['total_amount'];
 
@@ -384,7 +804,7 @@ try {
                     }
                 }
             }
-            
+
             echo json_encode([
                 "order_id" => $orderId,
                 "qr_url" => $qrUrl,
@@ -399,7 +819,7 @@ try {
     } elseif ($method === 'GET' && preg_match('/^\/api\/qris\/status\/(.+)$/', $route, $matches)) {
         $orderId = $matches[1];
         $serverKey = 'Mid-server-pScqIkUSLacGu739R4FnTDFO';
-        
+
         $ch = curl_init("https://api.sandbox.midtrans.com/v2/$orderId/status");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -411,7 +831,7 @@ try {
         curl_close($ch);
 
         $resData = json_decode($response, true);
-        
+
         if (isset($resData['transaction_status'])) {
             echo json_encode(["status" => $resData['transaction_status']]);
         } else {
@@ -419,6 +839,10 @@ try {
             echo json_encode(["error" => "Transaction not found"]);
         }
         exit;
+
+    // =========================================================================
+    // CHECKOUT ROUTE (UPDATED with discount, tax, customer, shift)
+    // =========================================================================
 
     } elseif ($method === 'POST' && $route === '/api/checkout') {
         $user = getAuthUser($pdo);
@@ -434,30 +858,67 @@ try {
             echo json_encode(["error" => "total_amount is required"]);
             exit;
         }
-        
+
         $paymentMethod = $input['payment_method'] ?? 'cash';
-        if (!in_array($paymentMethod, ['cash', 'qris'])) {
-            $paymentMethod = 'cash';
-        }
+        if (!in_array($paymentMethod, ['cash', 'qris'])) $paymentMethod = 'cash';
 
         $storeId = $user['store_id'] ?? 1;
+        $discountAmount = (double)($input['discount_amount'] ?? 0);
+        $discountType = in_array($input['discount_type'] ?? '', ['percent', 'nominal']) ? $input['discount_type'] : 'nominal';
+        $taxAmount = (double)($input['tax_amount'] ?? 0);
+        $taxPercent = (double)($input['tax_percent'] ?? 0);
+        $subtotalAmount = (double)($input['subtotal_amount'] ?? $input['total_amount']);
+        $customerId = isset($input['customer_id']) ? (int)$input['customer_id'] : null;
+        $customerNote = $input['customer_note'] ?? null;
+
+        // Get active shift
+        $stmtShift = $pdo->prepare("SELECT id FROM shifts WHERE kasir_id = ? AND status = 'open' ORDER BY opened_at DESC LIMIT 1");
+        $stmtShift->execute([$user['id']]);
+        $activeShift = $stmtShift->fetch();
+        $shiftId = $activeShift ? (int)$activeShift['id'] : null;
 
         try {
             $pdo->beginTransaction();
-            $stmt = $pdo->prepare("INSERT INTO transactions (store_id, kasir_id, total_amount, payment_method) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$storeId, $user['id'], $input['total_amount'], $paymentMethod]);
+
+            $stmt = $pdo->prepare("
+                INSERT INTO transactions
+                (store_id, kasir_id, subtotal_amount, discount_amount, discount_type, tax_amount, tax_percent, total_amount, payment_method, customer_id, shift_id, customer_note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $storeId, $user['id'],
+                $subtotalAmount, $discountAmount, $discountType,
+                $taxAmount, $taxPercent, $input['total_amount'],
+                $paymentMethod, $customerId, $shiftId, $customerNote
+            ]);
             $transactionId = $pdo->lastInsertId();
 
+            // Insert items & deduct stock
             if (!empty($input['items']) && is_array($input['items'])) {
                 $stmtItem = $pdo->prepare("INSERT INTO transaction_items (transaction_id, menu_id, quantity, price) VALUES (?, ?, ?, ?)");
                 foreach ($input['items'] as $item) {
-                    $stmtItem->execute([                        $transactionId, 
-                        $item['menu_id'], 
-                        $item['quantity'], 
+                    $stmtItem->execute([
+                        $transactionId,
+                        $item['menu_id'],
+                        $item['quantity'],
                         $item['price']
                     ]);
+                    // Deduct stock
+                    $pdo->prepare("UPDATE stock SET quantity = GREATEST(0, quantity - ?) WHERE menu_id = ?")
+                        ->execute([$item['quantity'], $item['menu_id']]);
                 }
             }
+
+            // Update customer: add points + spend + visit count
+            if ($customerId) {
+                $pointsEarned = (int)floor($input['total_amount'] / 1000);
+                $pdo->prepare("
+                    UPDATE customers
+                    SET points = points + ?, total_spend = total_spend + ?, visit_count = visit_count + 1
+                    WHERE id = ?
+                ")->execute([$pointsEarned, $input['total_amount'], $customerId]);
+            }
+
             $pdo->commit();
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -474,6 +935,8 @@ try {
         $transaction['store_id'] = (int)$transaction['store_id'];
         $transaction['kasir_id'] = (int)$transaction['kasir_id'];
         $transaction['total_amount'] = (double)$transaction['total_amount'];
+        $transaction['discount_amount'] = (double)$transaction['discount_amount'];
+        $transaction['tax_amount'] = (double)$transaction['tax_amount'];
 
         http_response_code(201);
         echo json_encode([
@@ -481,6 +944,10 @@ try {
             "transaction" => $transaction
         ]);
         exit;
+
+    // =========================================================================
+    // SYNC TRANSACTIONS (UPDATED)
+    // =========================================================================
 
     } elseif ($method === 'POST' && $route === '/api/sync-transactions') {
         $user = getAuthUser($pdo);
@@ -500,7 +967,11 @@ try {
         $pdo->beginTransaction();
         try {
             $inserted = 0;
-            $stmtTx = $pdo->prepare("INSERT INTO transactions (store_id, kasir_id, total_amount, payment_method, created_at) VALUES (?, ?, ?, ?, ?)");
+            $stmtTx = $pdo->prepare("
+                INSERT INTO transactions
+                (store_id, kasir_id, subtotal_amount, discount_amount, discount_type, tax_amount, tax_percent, total_amount, payment_method, customer_id, shift_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
             $stmtItem = $pdo->prepare("INSERT INTO transaction_items (transaction_id, menu_id, quantity, price) VALUES (?, ?, ?, ?)");
 
             foreach ($input['transactions'] as $tx) {
@@ -511,8 +982,15 @@ try {
                 $stmtTx->execute([
                     $user['store_id'],
                     $user['id'],
+                    $tx['subtotal_amount'] ?? $tx['total_amount'],
+                    $tx['discount_amount'] ?? 0,
+                    $tx['discount_type'] ?? 'nominal',
+                    $tx['tax_amount'] ?? 0,
+                    $tx['tax_percent'] ?? 0,
                     $tx['total_amount'],
                     $paymentMethod,
+                    $tx['customer_id'] ?? null,
+                    $tx['shift_id'] ?? null,
                     $createdAt
                 ]);
                 $txId = $pdo->lastInsertId();
@@ -525,6 +1003,8 @@ try {
                             $item['quantity'],
                             $item['price']
                         ]);
+                        $pdo->prepare("UPDATE stock SET quantity = GREATEST(0, quantity - ?) WHERE menu_id = ?")
+                            ->execute([$item['quantity'], $item['menu_id']]);
                     }
                 }
                 $inserted++;
@@ -538,6 +1018,10 @@ try {
             echo json_encode(["error" => "Database error during sync: " . $e->getMessage()]);
         }
         exit;
+
+    // =========================================================================
+    // OWNER REPORT ROUTES
+    // =========================================================================
 
     } elseif ($method === 'GET' && $route === '/api/owner/reports') {
         $user = getAuthUser($pdo);
@@ -565,6 +1049,8 @@ try {
             $tx['store_id'] = (int)$tx['store_id'];
             $tx['kasir_id'] = (int)$tx['kasir_id'];
             $tx['total_amount'] = (double)$tx['total_amount'];
+            $tx['discount_amount'] = (double)($tx['discount_amount'] ?? 0);
+            $tx['tax_amount'] = (double)($tx['tax_amount'] ?? 0);
 
             $stmtKasir = $pdo->prepare("SELECT id, name, email FROM users WHERE id = ?");
             $stmtKasir->execute([$tx['kasir_id']]);
@@ -607,10 +1093,33 @@ try {
         $stmtMenu->execute([$user['id']]);
         $menu = $stmtMenu->fetch();
 
+        // Low stock alerts count
+        $stmtLowStock = $pdo->prepare("
+            SELECT COUNT(*) as low_stock_count
+            FROM stock s
+            JOIN menus m ON s.menu_id = m.id
+            JOIN stores st ON m.store_id = st.id
+            WHERE st.owner_id = ? AND s.quantity <= s.min_stock
+        ");
+        $stmtLowStock->execute([$user['id']]);
+        $lowStock = $stmtLowStock->fetch();
+
+        // Active customers count
+        $stmtCust = $pdo->prepare("
+            SELECT COUNT(*) as total_customers
+            FROM customers c
+            JOIN stores st ON c.store_id = st.id
+            WHERE st.owner_id = ?
+        ");
+        $stmtCust->execute([$user['id']]);
+        $custData = $stmtCust->fetch();
+
         echo json_encode([
             'total_sales_today' => (double)($today['total_sales'] ?? 0),
             'total_orders_today' => (int)($today['total_orders'] ?? 0),
-            'total_menus' => (int)($menu['total_menus'] ?? 0)
+            'total_menus' => (int)($menu['total_menus'] ?? 0),
+            'low_stock_count' => (int)($lowStock['low_stock_count'] ?? 0),
+            'total_customers' => (int)($custData['total_customers'] ?? 0),
         ]);
         exit;
 
@@ -622,22 +1131,22 @@ try {
             exit;
         }
 
-        // Kasir can only see TODAY'S report for their transactions
         $stmt = $pdo->prepare("
-            SELECT 
+            SELECT
                 COUNT(*) as total_transactions,
                 SUM(total_amount) as total_revenue,
                 SUM(CASE WHEN payment_method = 'cash' THEN total_amount ELSE 0 END) as total_cash,
-                SUM(CASE WHEN payment_method = 'qris' THEN total_amount ELSE 0 END) as total_qris
-            FROM transactions 
+                SUM(CASE WHEN payment_method = 'qris' THEN total_amount ELSE 0 END) as total_qris,
+                SUM(discount_amount) as total_discount,
+                SUM(tax_amount) as total_tax
+            FROM transactions
             WHERE kasir_id = ? AND DATE(created_at) = CURDATE()
         ");
         $stmt->execute([$user['id']]);
         $report = $stmt->fetch();
 
-        // Fetch recent transactions
         $stmtTx = $pdo->prepare("
-            SELECT id, created_at, payment_method, total_amount
+            SELECT id, created_at, payment_method, total_amount, subtotal_amount, discount_amount, tax_amount, customer_id
             FROM transactions
             WHERE kasir_id = ? AND DATE(created_at) = CURDATE()
             ORDER BY created_at DESC
@@ -648,9 +1157,12 @@ try {
         foreach ($transactions as &$tx) {
             $tx['id'] = (int)$tx['id'];
             $tx['total_amount'] = (double)$tx['total_amount'];
-            
+            $tx['subtotal_amount'] = (double)($tx['subtotal_amount'] ?? $tx['total_amount']);
+            $tx['discount_amount'] = (double)($tx['discount_amount'] ?? 0);
+            $tx['tax_amount'] = (double)($tx['tax_amount'] ?? 0);
+
             $stmtItems = $pdo->prepare("
-                SELECT ti.quantity, ti.price, m.name 
+                SELECT ti.quantity, ti.price, m.name
                 FROM transaction_items ti
                 JOIN menus m ON ti.menu_id = m.id
                 WHERE ti.transaction_id = ?
@@ -662,6 +1174,16 @@ try {
                 $it['price'] = (double)$it['price'];
             }
             $tx['items'] = $items;
+
+            // Customer info
+            if ($tx['customer_id']) {
+                $stmtCust = $pdo->prepare("SELECT id, name, phone, points FROM customers WHERE id = ?");
+                $stmtCust->execute([$tx['customer_id']]);
+                $cust = $stmtCust->fetch();
+                $tx['customer'] = $cust ?: null;
+            } else {
+                $tx['customer'] = null;
+            }
         }
 
         echo json_encode([
@@ -669,6 +1191,8 @@ try {
             'total_revenue' => (double)$report['total_revenue'],
             'total_cash' => (double)$report['total_cash'],
             'total_qris' => (double)$report['total_qris'],
+            'total_discount' => (double)($report['total_discount'] ?? 0),
+            'total_tax' => (double)($report['total_tax'] ?? 0),
             'recent_transactions' => $transactions
         ]);
         exit;
@@ -682,7 +1206,7 @@ try {
         }
 
         $period = $_GET['period'] ?? 'daily';
-        
+
         if ($period === 'monthly') {
             $dateFormat = '%Y-%m';
         } elseif ($period === 'yearly') {
@@ -692,12 +1216,14 @@ try {
         }
 
         $stmt = $pdo->prepare("
-            SELECT 
+            SELECT
                 DATE_FORMAT(t.created_at, ?) as period_date,
                 COUNT(t.id) as total_transactions,
                 SUM(t.total_amount) as total_revenue,
                 SUM(CASE WHEN t.payment_method = 'cash' THEN t.total_amount ELSE 0 END) as total_cash,
-                SUM(CASE WHEN t.payment_method = 'qris' THEN t.total_amount ELSE 0 END) as total_qris
+                SUM(CASE WHEN t.payment_method = 'qris' THEN t.total_amount ELSE 0 END) as total_qris,
+                SUM(t.discount_amount) as total_discount,
+                SUM(t.tax_amount) as total_tax
             FROM transactions t
             JOIN stores s ON t.store_id = s.id
             WHERE s.owner_id = ?
@@ -712,10 +1238,12 @@ try {
             $r['total_revenue'] = (double)$r['total_revenue'];
             $r['total_cash'] = (double)$r['total_cash'];
             $r['total_qris'] = (double)$r['total_qris'];
+            $r['total_discount'] = (double)($r['total_discount'] ?? 0);
+            $r['total_tax'] = (double)($r['total_tax'] ?? 0);
 
             if ($period === 'daily') {
                 $stmtDet = $pdo->prepare("
-                    SELECT t.id, t.created_at, t.total_amount, t.payment_method
+                    SELECT t.id, t.created_at, t.total_amount, t.payment_method, t.discount_amount, t.tax_amount
                     FROM transactions t
                     JOIN stores s ON t.store_id = s.id
                     WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
@@ -723,11 +1251,13 @@ try {
                 ");
                 $stmtDet->execute([$user['id'], $dateFormat, $r['period_date']]);
                 $details = $stmtDet->fetchAll();
-                
+
                 foreach ($details as &$d) {
                     $d['total_amount'] = (double)$d['total_amount'];
+                    $d['discount_amount'] = (double)($d['discount_amount'] ?? 0);
+                    $d['tax_amount'] = (double)($d['tax_amount'] ?? 0);
                     $stmtItems = $pdo->prepare("
-                        SELECT ti.quantity, ti.price, m.name 
+                        SELECT ti.quantity, ti.price, m.name
                         FROM transaction_items ti
                         JOIN menus m ON ti.menu_id = m.id
                         WHERE ti.transaction_id = ?
@@ -743,7 +1273,7 @@ try {
                 $r['details'] = $details;
             } elseif ($period === 'monthly') {
                 $stmtDet = $pdo->prepare("
-                    SELECT 
+                    SELECT
                         DATE_FORMAT(t.created_at, '%Y-%m-%d') as sub_period_date,
                         SUM(t.total_amount) as sub_total_revenue
                     FROM transactions t
@@ -760,7 +1290,7 @@ try {
                 $r['details'] = $details;
             } elseif ($period === 'yearly') {
                 $stmtDet = $pdo->prepare("
-                    SELECT 
+                    SELECT
                         DATE_FORMAT(t.created_at, '%Y-%m') as sub_period_date,
                         SUM(t.total_amount) as sub_total_revenue
                     FROM transactions t
@@ -781,10 +1311,14 @@ try {
         echo json_encode($reports);
         exit;
 
+    // =========================================================================
+    // OWNER KASIR MANAGEMENT ROUTES
+    // =========================================================================
+
     } elseif ($method === 'GET' && $route === '/api/owner/kasir') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error'=>'Forbidden']); exit; }
-        
+
         $stmtStore = $pdo->prepare("SELECT id FROM stores WHERE owner_id = ? LIMIT 1");
         $stmtStore->execute([$user['id']]);
         $store = $stmtStore->fetch();
@@ -825,7 +1359,7 @@ try {
         $hash = password_hash($input['password'], PASSWORD_BCRYPT);
         $pdo->prepare("INSERT INTO users (name, email, password, role, store_id) VALUES (?, ?, ?, 'kasir', ?)")
             ->execute([$input['name'], $input['email'], $hash, $store['id']]);
-        
+
         echo json_encode(['message' => 'Kasir created successfully']); exit;
 
     } elseif ($method === 'POST' && preg_match('/^\/api\/owner\/kasir\/(\d+)\/toggle$/', $route, $matches)) {
@@ -858,10 +1392,14 @@ try {
         }
         echo json_encode(['message' => 'Kasir dihapus']); exit;
 
+    // =========================================================================
+    // SUPER ADMIN ROUTES
+    // =========================================================================
+
     } elseif ($method === 'POST' && $route === '/api/admin/generate-code') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
-        
+
         $code = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"), 0, 8);
         $pdo->prepare("INSERT INTO verification_codes (code) VALUES (?)")->execute([$code]);
         echo json_encode(['code' => $code]); exit;
@@ -869,14 +1407,14 @@ try {
     } elseif ($method === 'GET' && $route === '/api/admin/owners') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
-        
+
         $stmt = $pdo->query("SELECT id, name, email, is_active, created_at FROM users WHERE role = 'owner' ORDER BY created_at DESC");
         echo json_encode($stmt->fetchAll()); exit;
 
     } elseif ($method === 'POST' && preg_match('/^\/api\/admin\/owners\/(\d+)\/toggle$/', $route, $matches)) {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
-        
+
         $ownerId = $matches[1];
         $pdo->prepare("UPDATE users SET is_active = NOT is_active WHERE id = ? AND role = 'owner'")->execute([$ownerId]);
         echo json_encode(['message' => 'Owner status toggled']); exit;

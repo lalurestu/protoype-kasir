@@ -19,6 +19,7 @@ dependencies:
   google_fonts: ^8.1.0
   shared_preferences: ^2.5.5
   connectivity_plus: ^7.1.1
+  print_bluetooth_thermal: ^1.0.7
 
 dev_dependencies:
   flutter_test:

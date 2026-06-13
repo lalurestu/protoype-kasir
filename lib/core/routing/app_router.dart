@@ -11,6 +11,9 @@ import '../../features/kasir/presentation/screens/kasir_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/owner_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/manage_menu_screen.dart';
 import '../../features/owner/presentation/screens/manage_kasir_screen.dart';
+import '../../features/owner/presentation/screens/manage_stock_screen.dart';
+import '../../features/owner/presentation/screens/manage_customers_screen.dart';
+import '../../features/owner/presentation/screens/owner_shifts_screen.dart';
 import '../../features/kasir/presentation/screens/pos_checkout_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_report_screen.dart';
 import '../../features/owner/presentation/screens/owner_report_screen.dart';
@@ -23,7 +26,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: '/login',
     redirect: (context, state) {
       final isLoggingIn = state.uri.path == '/login';
-      
+
       // Not authenticated
       if (!authState.isAuthenticated) {
         return isLoggingIn ? null : '/login';
@@ -39,7 +42,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           case UserRole.superAdmin:
             return '/admin';
           default:
-            return '/login'; // Fallback
+            return '/login';
         }
       }
 
@@ -55,7 +58,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         return _getRoleDashboard(authState.role);
       }
 
-      return null; // No redirect needed
+      return null;
     },
     routes: [
       GoRoute(
@@ -96,6 +99,21 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ManageKasirScreen(),
           ),
           GoRoute(
+            path: 'manage-stock',
+            name: RouteNames.manageStock,
+            builder: (context, state) => const ManageStockScreen(),
+          ),
+          GoRoute(
+            path: 'manage-customers',
+            name: RouteNames.manageCustomers,
+            builder: (context, state) => const ManageCustomersScreen(),
+          ),
+          GoRoute(
+            path: 'shifts',
+            name: RouteNames.ownerShifts,
+            builder: (context, state) => const OwnerShiftsScreen(),
+          ),
+          GoRoute(
             path: 'report',
             name: RouteNames.ownerReport,
             builder: (context, state) => const OwnerReportScreen(),
@@ -114,9 +132,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
 String _getRoleDashboard(UserRole role) {
   switch (role) {
-    case UserRole.kasir: return '/kasir';
-    case UserRole.owner: return '/owner';
-    case UserRole.superAdmin: return '/admin';
-    default: return '/login';
+    case UserRole.kasir:
+      return '/kasir';
+    case UserRole.owner:
+      return '/owner';
+    case UserRole.superAdmin:
+      return '/admin';
+    default:
+      return '/login';
   }
 }
