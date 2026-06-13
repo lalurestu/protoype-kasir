@@ -48,7 +48,7 @@ class OwnerDashboardScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             statsAsync.when(
               data: (stats) {
-                final totalSales = stats['total_sales_today'] ?? 0.0;
+                final double totalSales = (stats['total_sales_today'] as num?)?.toDouble() ?? 0.0;
                 final totalOrders = stats['total_orders_today'] ?? 0;
                 final totalMenus = stats['total_menus'] ?? 0;
                 final lowStockCount = stats['low_stock_count'] ?? 0;
@@ -95,7 +95,7 @@ class OwnerDashboardScreen extends ConsumerWidget {
                           return Row(
                             children: [
                               Expanded(child: _buildStatCard(context, 'Penjualan Hari Ini',
-                                  'Rp ${(totalSales as double).toStringAsFixed(0)}',
+                                  'Rp ${totalSales.toStringAsFixed(0)}',
                                   Icons.trending_up, AppTheme.secondaryColor)),
                               const SizedBox(width: 16),
                               Expanded(child: _buildStatCard(context, 'Pesanan',
@@ -118,7 +118,7 @@ class OwnerDashboardScreen extends ConsumerWidget {
                             childAspectRatio: 1.4,
                             children: [
                               _buildStatCard(context, 'Penjualan',
-                                  'Rp ${(totalSales as double).toStringAsFixed(0)}',
+                                  'Rp ${totalSales.toStringAsFixed(0)}',
                                   Icons.trending_up, AppTheme.secondaryColor),
                               _buildStatCard(context, 'Pesanan',
                                   '$totalOrders', Icons.receipt_long, AppTheme.accentColor),
