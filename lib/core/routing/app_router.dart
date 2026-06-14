@@ -16,50 +16,61 @@ import '../../features/owner/presentation/screens/manage_customers_screen.dart';
 import '../../features/owner/presentation/screens/owner_shifts_screen.dart';
 import '../../features/kasir/presentation/screens/pos_checkout_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_report_screen.dart';
+import '../../features/kasir/presentation/screens/printer_settings_screen.dart';
 import '../../features/owner/presentation/screens/owner_report_screen.dart';
 import '../../features/super_admin/presentation/screens/admin_dashboard_screen.dart';
 
+/// Notifier yang jadi jembatan antara Riverpod state dan GoRouter,
+/// sehingga GoRouter TIDAK perlu direcreate setiap auth state berubah.
+class RouterNotifier extends ChangeNotifier {
+  final Ref _ref;
+
+  RouterNotifier(this._ref) {
+    // Dengerin perubahan authProvider, kalau berubah kasih tau router
+    _ref.listen<AuthState>(authProvider, (_, __) => notifyListeners());
+  }
+
+  String? redirect(BuildContext context, GoRouterState state) {
+    final authState = _ref.read(authProvider);
+    final isLoggingIn = state.uri.path == '/login';
+
+    // Belum login -> paksa ke login
+    if (!authState.isAuthenticated) {
+      return isLoggingIn ? null : '/login';
+    }
+
+    // Sudah login tapi akses halaman login -> redirect ke dashboard role-nya
+    if (isLoggingIn) {
+      return _getRoleDashboard(authState.role);
+    }
+
+    // Guard per role
+    final path = state.uri.path;
+    if (path.startsWith('/kasir') && authState.role != UserRole.kasir) {
+      return _getRoleDashboard(authState.role);
+    }
+    if (path.startsWith('/owner') && authState.role != UserRole.owner) {
+      return _getRoleDashboard(authState.role);
+    }
+    if (path.startsWith('/admin') && authState.role != UserRole.superAdmin) {
+      return _getRoleDashboard(authState.role);
+    }
+
+    return null;
+  }
+}
+
+final routerNotifierProvider = ChangeNotifierProvider<RouterNotifier>((ref) {
+  return RouterNotifier(ref);
+});
+
 final goRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
     initialLocation: '/login',
-    redirect: (context, state) {
-      final isLoggingIn = state.uri.path == '/login';
-
-      // Not authenticated
-      if (!authState.isAuthenticated) {
-        return isLoggingIn ? null : '/login';
-      }
-
-      // Authenticated but trying to access login
-      if (isLoggingIn) {
-        switch (authState.role) {
-          case UserRole.kasir:
-            return '/kasir';
-          case UserRole.owner:
-            return '/owner';
-          case UserRole.superAdmin:
-            return '/admin';
-          default:
-            return '/login';
-        }
-      }
-
-      // Guards for Roles
-      final path = state.uri.path;
-      if (path.startsWith('/kasir') && authState.role != UserRole.kasir) {
-        return _getRoleDashboard(authState.role);
-      }
-      if (path.startsWith('/owner') && authState.role != UserRole.owner) {
-        return _getRoleDashboard(authState.role);
-      }
-      if (path.startsWith('/admin') && authState.role != UserRole.superAdmin) {
-        return _getRoleDashboard(authState.role);
-      }
-
-      return null;
-    },
+    refreshListenable: notifier,
+    redirect: notifier.redirect,
     routes: [
       GoRoute(
         path: '/login',
@@ -80,6 +91,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             path: 'report',
             name: RouteNames.kasirReport,
             builder: (context, state) => const KasirReportScreen(),
+          ),
+          GoRoute(
+            path: 'printer',
+            name: RouteNames.printerSettings,
+            builder: (context, state) => const PrinterSettingsScreen(),
           ),
         ],
       ),

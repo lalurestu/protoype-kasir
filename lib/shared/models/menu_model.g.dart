@@ -1,6 +1,4 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// Regenerated manually to reflect changes in menu_model.dart
-// Run: flutter pub run build_runner build
 
 part of 'menu_model.dart';
 
@@ -19,10 +17,15 @@ MenuModel _$MenuModelFromJson(Map<String, dynamic> json) => MenuModel(
       isAvailable: json['is_available'] as bool? ?? true,
       stock: (json['stock'] as num?)?.toInt(),
       minStock: (json['min_stock'] as num?)?.toInt(),
+      variants: (json['variants'] as List<dynamic>?)
+          ?.map((e) => MenuVariant.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      addons: (json['addons'] as List<dynamic>?)
+          ?.map((e) => MenuAddon.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
 
-Map<String, dynamic> _$MenuModelToJson(MenuModel instance) =>
-    <String, dynamic>{
+Map<String, dynamic> _$MenuModelToJson(MenuModel instance) => <String, dynamic>{
       'id': instance.id,
       'store_id': instance.storeId,
       'name': instance.name,
@@ -33,4 +36,31 @@ Map<String, dynamic> _$MenuModelToJson(MenuModel instance) =>
       'is_available': instance.isAvailable,
       'stock': instance.stock,
       'min_stock': instance.minStock,
+      'variants': instance.variants,
+      'addons': instance.addons,
+    };
+
+MenuVariant _$MenuVariantFromJson(Map<String, dynamic> json) => MenuVariant(
+      id: (json['id'] as num?)?.toInt(),
+      name: json['name'] as String,
+      price: (json['price'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$MenuVariantToJson(MenuVariant instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'price': instance.price,
+    };
+
+MenuAddon _$MenuAddonFromJson(Map<String, dynamic> json) => MenuAddon(
+      id: (json['id'] as num?)?.toInt(),
+      name: json['name'] as String,
+      price: (json['price'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$MenuAddonToJson(MenuAddon instance) => <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'price': instance.price,
     };

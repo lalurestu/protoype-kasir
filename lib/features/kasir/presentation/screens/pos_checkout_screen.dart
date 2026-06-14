@@ -13,6 +13,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/local_db_service.dart';
 import '../../../../core/services/printer_service.dart';
 import '../../../../shared/models/customer_model.dart';
+import '../../../../shared/models/menu_model.dart';
 
 class PosCheckoutScreen extends ConsumerStatefulWidget {
   const PosCheckoutScreen({super.key});
@@ -39,6 +40,12 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             title: const Text('Pembayaran'),
             backgroundColor: AppTheme.surfaceDark,
             actions: [
+              TextButton.icon(
+                icon: const Icon(Icons.receipt_long, color: AppTheme.secondaryColor),
+                label: const Text('Bill Tersimpan', style: TextStyle(color: AppTheme.secondaryColor)),
+                onPressed: () => _showSavedBillsDialog(context),
+              ),
+              const SizedBox(width: 8),
               TextButton.icon(
                 icon: const Icon(Icons.delete_outline, color: AppTheme.error),
                 label: const Text('Kosongkan', style: TextStyle(color: AppTheme.error)),
@@ -109,7 +116,13 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               final isOutOfStock = menu.stock != null && menu.stock! <= 0;
 
               return InkWell(
-                onTap: isOutOfStock ? null : () => cartNotifier.addItem(menu),
+                onTap: isOutOfStock ? null : () {
+                  if ((menu.variants != null && menu.variants!.isNotEmpty) || (menu.addons != null && menu.addons!.isNotEmpty)) {
+                    _showVariantDialog(context, menu);
+                  } else {
+                    cartNotifier.addItem(menu);
+                  }
+                },
                 borderRadius: BorderRadius.circular(16),
                 child: Badge(
                   isLabelVisible: quantity > 0,
@@ -212,7 +225,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     final discount = ref.watch(discountProvider);
     final selectedCustomer = ref.watch(selectedCustomerProvider);
 
-    final subtotal = cartItems.fold(0.0, (sum, item) => sum + (item.menu.price * item.quantity));
+    final subtotal = cartItems.fold(0.0, (sum, item) => sum + item.total);
     final discountAmount = discount.calculateDiscount(subtotal);
     final taxAmount = discount.calculateTax(subtotal);
     final total = discount.calculateTotal(subtotal);
@@ -251,22 +264,30 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                         dense: true,
                         title: Text(item.menu.name,
                             style: const TextStyle(fontSize: 14)),
-                        subtitle: Text(
-                            'Rp ${item.menu.price.toStringAsFixed(0)} x ${item.quantity}'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (item.variant != null)
+                              Text('Varian: ${item.variant!.name} (+Rp ${item.variant!.price.toStringAsFixed(0)})', style: const TextStyle(fontSize: 12, color: AppTheme.secondaryColor)),
+                            if (item.addons.isNotEmpty)
+                              Text('Topping: ${item.addons.map((a) => '${a.name} (+Rp ${a.price.toStringAsFixed(0)})').join(', ')}', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                            Text('Rp ${(item.total / item.quantity).toStringAsFixed(0)} x ${item.quantity}'),
+                          ],
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               icon: const Icon(Icons.remove_circle_outline,
                                   color: AppTheme.textSecondary, size: 20),
-                              onPressed: () => cartNotifier.removeItem(item.menu.id),
+                              onPressed: () => cartNotifier.decrementItem(item.id),
                             ),
                             Text('${item.quantity}',
                                 style: const TextStyle(fontWeight: FontWeight.bold)),
                             IconButton(
                               icon: const Icon(Icons.add_circle_outline,
                                   color: AppTheme.primaryColor, size: 20),
-                              onPressed: () => cartNotifier.addItem(item.menu),
+                              onPressed: () => cartNotifier.incrementItem(item.id),
                             ),
                           ],
                         ),
@@ -315,17 +336,34 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: (cartItems.isEmpty || _isProcessing)
-                        ? null
-                        : () => _showPaymentDialog(context, subtotal, discountAmount, taxAmount, total, discount),
-                    child: _isProcessing
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Proses Pembayaran', style: TextStyle(fontSize: 16)),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: (cartItems.isEmpty || _isProcessing)
+                            ? null
+                            : () => _showSaveBillDialog(context, subtotal, discountAmount, taxAmount, total, discount),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: cartItems.isEmpty ? Colors.grey : AppTheme.secondaryColor),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Simpan', style: TextStyle(color: AppTheme.secondaryColor)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: (cartItems.isEmpty || _isProcessing)
+                            ? null
+                            : () => _showPaymentDialog(context, subtotal, discountAmount, taxAmount, total, discount),
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                        child: _isProcessing
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Proses Bayar', style: TextStyle(fontSize: 15)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -650,10 +688,11 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               Text('Diskon & Pajak', style: TextStyle(color: Colors.white)),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               Text('Subtotal: Rp ${subtotal.toStringAsFixed(0)}',
                   style: const TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 20),
@@ -742,6 +781,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                 }).toList(),
               ),
             ],
+          ),
           ),
           actions: [
             TextButton(
@@ -851,6 +891,290 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     }
   }
 
+  void _showSaveBillDialog(BuildContext context, double subtotal, double discountAmount, double taxAmount, double total, DiscountState discount) {
+    final tableCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceDark,
+        title: const Text('Simpan Bill', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: tableCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Nomor Meja',
+                labelStyle: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Catatan (opsional)',
+                labelStyle: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondaryColor),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _processSaveBill(subtotal, discountAmount, taxAmount, total, discount, tableCtrl.text, noteCtrl.text);
+            },
+            child: const Text('Simpan', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processSaveBill(double subtotal, double discountAmount, double taxAmount, double total, DiscountState discount, String tableNumber, String note) async {
+    setState(() => _isProcessing = true);
+    try {
+      final dio = ref.read(dioProvider);
+      final cartItems = ref.read(cartProvider);
+      final selectedCustomer = ref.read(selectedCustomerProvider);
+      final shiftState = ref.read(shiftNotifierProvider);
+      final currentShiftId = shiftState.valueOrNull?.id;
+
+      final itemsData = cartItems.map((item) => {
+        'menu_id': item.menu.id,
+        'quantity': item.quantity,
+        'price': item.menu.price,
+        'variant_id': item.variant?.id,
+        'variant_name': item.variant?.name,
+        'addons': item.addons.map((a) => {'id': a.id, 'name': a.name, 'price': a.price}).toList(),
+      }).toList();
+
+      final txData = {
+        'subtotal_amount': subtotal,
+        'discount_amount': discountAmount,
+        'discount_type': discount.discountType == DiscountType.percent ? 'percent' : 'nominal',
+        'tax_amount': taxAmount,
+        'tax_percent': discount.taxPercent,
+        'total_amount': total,
+        'payment_method': 'cash',
+        'items': itemsData,
+        'status': 'saved',
+        'table_number': tableNumber,
+        if (note.isNotEmpty) 'customer_note': note,
+        if (selectedCustomer != null) 'customer_id': selectedCustomer.id,
+        if (currentShiftId != null) 'shift_id': currentShiftId,
+      };
+
+      await dio.post('/checkout', data: txData);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Bill berhasil disimpan!'), backgroundColor: Colors.green),
+        );
+        ref.read(cartProvider.notifier).clearCart();
+        ref.read(discountProvider.notifier).reset();
+        ref.read(selectedCustomerProvider.notifier).clear();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Gagal menyimpan bill: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  void _showSavedBillsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppTheme.surfaceDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 600,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Daftar Bill Tersimpan', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+              const Divider(color: Colors.white24),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 400,
+                child: FutureBuilder(
+                  future: ref.read(dioProvider).get('/checkout/saved'),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Gagal memuat bill: ${snapshot.error}', style: const TextStyle(color: AppTheme.error)));
+                    }
+                    
+                    final bills = (snapshot.data?.data as List?) ?? [];
+                    if (bills.isEmpty) {
+                      return const Center(child: Text('Tidak ada bill tersimpan.', style: TextStyle(color: AppTheme.textSecondary)));
+                    }
+
+                    return ListView.builder(
+                      itemCount: bills.length,
+                      itemBuilder: (context, index) {
+                        final bill = bills[index];
+                        final tableNumber = bill['table_number'] ?? '-';
+                        final total = bill['total_amount'] ?? 0;
+                        final customer = bill['customer']?['name'] ?? 'Guest';
+                        
+                        return Card(
+                          color: AppTheme.backgroundDark,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Meja: $tableNumber', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                                      const SizedBox(height: 4),
+                                      Text('Pelanggan: $customer', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                                      Text('Waktu: ${bill['created_at']}', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text('Rp $total', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        OutlinedButton(
+                                          style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.error), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                                          onPressed: () => _cancelSavedBill(bill['id'], ctx),
+                                          child: const Text('Batal', style: TextStyle(color: AppTheme.error, fontSize: 12)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(horizontal: 12)),
+                                          onPressed: () {
+                                            Navigator.pop(ctx);
+                                            _showPaySavedBillDialog(context, bill);
+                                          },
+                                          child: const Text('Bayar', style: TextStyle(fontSize: 12)),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPaySavedBillDialog(BuildContext context, Map<String, dynamic> bill) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceDark,
+        title: const Text('Pilih Metode Pembayaran', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Tagihan Meja ${bill['table_number'] ?? '-'}', style: const TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: 8),
+            Text('Rp ${bill['total_amount']}', style: const TextStyle(color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor, minimumSize: const Size(double.infinity, 48)),
+              icon: const Icon(Icons.money),
+              label: const Text('Bayar Tunai (Cash)'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _paySavedBill(bill['id'], 'cash');
+              },
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.secondaryColor, minimumSize: const Size(double.infinity, 48)),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Bayar QRIS'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _paySavedBill(bill['id'], 'qris');
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Kembali', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _paySavedBill(int id, String paymentMethod) async {
+    setState(() => _isProcessing = true);
+    try {
+      await ref.read(dioProvider).put('/checkout/$id/pay', data: {'payment_method': paymentMethod});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Pembayaran Berhasil!'), backgroundColor: Colors.green));
+        ref.read(shiftNotifierProvider.notifier).loadCurrentShift();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Gagal bayar: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _cancelSavedBill(int id, BuildContext ctxDialog) async {
+    try {
+      await ref.read(dioProvider).delete('/checkout/$id');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bill dibatalkan.'), backgroundColor: Colors.orange));
+        Navigator.pop(ctxDialog);
+        _showSavedBillsDialog(context); // Refresh
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Gagal batal: $e'), backgroundColor: Colors.red));
+    }
+  }
+
   void _showQrisDialog(BuildContext context, String orderId, String qrUrl, String qrString,
       double totalAmount, double subtotal, double discountAmount, double taxAmount, DiscountState discount) {
     bool isChecking = false;
@@ -946,6 +1270,9 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
         'menu_id': item.menu.id,
         'quantity': item.quantity,
         'price': item.menu.price,
+        'variant_id': item.variant?.id,
+        'variant_name': item.variant?.name,
+        'addons': item.addons.map((a) => {'id': a.id, 'name': a.name, 'price': a.price}).toList(),
       }).toList();
 
       final txData = {
@@ -1058,5 +1385,90 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             SnackBar(content: Text('Gagal cetak: $e'), backgroundColor: AppTheme.error));
       }
     }
+  }
+
+  void _showVariantDialog(BuildContext context, MenuModel menu) {
+    MenuVariant? selectedVariant = (menu.variants != null && menu.variants!.isNotEmpty) ? menu.variants!.first : null;
+    final List<MenuAddon> selectedAddons = [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surfaceDark,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Pilih Opsi: ${menu.name}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Divider(color: Colors.white24, height: 24),
+              
+              if (menu.variants != null && menu.variants!.isNotEmpty) ...[
+                const Text('Pilih Varian', style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: menu.variants!.map((v) => ChoiceChip(
+                    label: Text('${v.name} (+Rp ${v.price.toStringAsFixed(0)})', style: TextStyle(color: selectedVariant == v ? Colors.white : AppTheme.textSecondary)),
+                    selected: selectedVariant == v,
+                    selectedColor: AppTheme.primaryColor,
+                    backgroundColor: AppTheme.backgroundDark,
+                    onSelected: (selected) {
+                      if (selected) setModalState(() => selectedVariant = v);
+                    },
+                  )).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (menu.addons != null && menu.addons!.isNotEmpty) ...[
+                const Text('Tambahan Topping', style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: menu.addons!.map((a) {
+                    final isSelected = selectedAddons.contains(a);
+                    return FilterChip(
+                      label: Text('${a.name} (+Rp ${a.price.toStringAsFixed(0)})', style: TextStyle(color: isSelected ? Colors.white : AppTheme.textSecondary)),
+                      selected: isSelected,
+                      selectedColor: AppTheme.secondaryColor,
+                      backgroundColor: AppTheme.backgroundDark,
+                      onSelected: (selected) {
+                        setModalState(() {
+                          if (selected) {
+                            selectedAddons.add(a);
+                          } else {
+                            selectedAddons.remove(a);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(vertical: 16)),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    ref.read(cartProvider.notifier).addItem(menu, variant: selectedVariant, addons: selectedAddons);
+                  },
+                  child: const Text('Tambahkan ke Keranjang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

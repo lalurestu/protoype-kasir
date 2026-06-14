@@ -2,39 +2,65 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/models/menu_model.dart';
 
 class CartItem {
+  final String id; // unique id for cart item since same menu can have different variants
   final MenuModel menu;
+  final MenuVariant? variant;
+  final List<MenuAddon> addons;
   int quantity;
 
-  CartItem({required this.menu, this.quantity = 1});
+  CartItem({
+    required this.menu,
+    this.variant,
+    this.addons = const [],
+    this.quantity = 1,
+  }) : id = '${menu.id}_${variant?.id ?? 0}_${addons.map((a) => a.id).join("-")}';
   
-  double get total => menu.price * quantity;
+  double get total {
+    double basePrice = variant?.price ?? menu.price;
+    double addonsPrice = addons.fold(0.0, (sum, addon) => sum + addon.price);
+    return (basePrice + addonsPrice) * quantity;
+  }
 }
 
 class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super([]);
 
-  void addItem(MenuModel menu) {
-    final index = state.indexWhere((item) => item.menu.id == menu.id);
+  void addItem(MenuModel menu, {MenuVariant? variant, List<MenuAddon> addons = const []}) {
+    final newItem = CartItem(menu: menu, variant: variant, addons: addons);
+    final index = state.indexWhere((item) => item.id == newItem.id);
     if (index >= 0) {
       final updatedList = List<CartItem>.from(state);
       updatedList[index].quantity++;
       state = updatedList;
     } else {
-      state = [...state, CartItem(menu: menu)];
+      state = [...state, newItem];
     }
   }
 
-  void removeItem(int menuId) {
-    final index = state.indexWhere((item) => item.menu.id == menuId);
+  void incrementItem(String cartItemId) {
+    final index = state.indexWhere((item) => item.id == cartItemId);
+    if (index >= 0) {
+      final updatedList = List<CartItem>.from(state);
+      updatedList[index].quantity++;
+      state = updatedList;
+    }
+  }
+
+  void decrementItem(String cartItemId) {
+    final index = state.indexWhere((item) => item.id == cartItemId);
     if (index >= 0) {
       final updatedList = List<CartItem>.from(state);
       if (updatedList[index].quantity > 1) {
         updatedList[index].quantity--;
         state = updatedList;
       } else {
-        state = state.where((item) => item.menu.id != menuId).toList();
+        state = state.where((item) => item.id != cartItemId).toList();
       }
     }
+  }
+
+  void removeItem(String cartItemId) {
+    state = state.where((item) => item.id != cartItemId).toList();
   }
 
   void clearCart() {

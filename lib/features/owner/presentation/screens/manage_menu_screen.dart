@@ -15,6 +15,8 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
+  final _variantsController = TextEditingController();
+  final _addonsController = TextEditingController();
   String _selectedCategory = 'makanan';
   bool _isAvailable = true;
 
@@ -22,7 +24,20 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
+    _variantsController.dispose();
+    _addonsController.dispose();
     super.dispose();
+  }
+
+  List<Map<String, dynamic>> _parseOptions(String text) {
+    if (text.trim().isEmpty) return [];
+    return text.split(',').map((e) {
+      final parts = e.split(':');
+      if (parts.length == 2) {
+        return {'name': parts[0].trim(), 'price': double.tryParse(parts[1].trim()) ?? 0};
+      }
+      return {'name': e.trim(), 'price': 0};
+    }).toList();
   }
 
   @override
@@ -143,9 +158,13 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
       _priceController.text = menu.price.toString();
       _selectedCategory = menu.category;
       _isAvailable = menu.isAvailable;
+      _variantsController.text = (menu.variants as List?)?.map((v) => '${v.name}:${v.price.toInt()}').join(', ') ?? '';
+      _addonsController.text = (menu.addons as List?)?.map((a) => '${a.name}:${a.price.toInt()}').join(', ') ?? '';
     } else {
       _nameController.clear();
       _priceController.clear();
+      _variantsController.clear();
+      _addonsController.clear();
       _selectedCategory = 'makanan';
       _isAvailable = true;
     }
@@ -160,9 +179,10 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
               title: Text(menu == null ? 'Tambah Menu' : 'Ubah Menu', style: const TextStyle(color: Colors.white)),
               content: Form(
                 key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     TextFormField(
                       controller: _nameController,
                       style: const TextStyle(color: Colors.white),
@@ -193,6 +213,18 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                         }
                       },
                     ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _variantsController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Varian (cth: Medium:0, Large:5000)', labelStyle: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _addonsController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Topping (cth: Keju:3000, Boba:4000)', labelStyle: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    ),
                     SwitchListTile(
                       title: const Text('Tersedia', style: TextStyle(color: Colors.white)),
                       value: _isAvailable,
@@ -200,6 +232,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                       onChanged: (val) => setStateDialog(() => _isAvailable = val),
                     ),
                   ],
+                ),
                 ),
               ),
               actions: [
@@ -216,6 +249,8 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                             'price': double.parse(_priceController.text),
                             'category': _selectedCategory,
                             'is_available': _isAvailable,
+                            'variants': _parseOptions(_variantsController.text),
+                            'addons': _parseOptions(_addonsController.text),
                           });
                         } else {
                           await dio.put('/menus/${menu.id}', data: {
@@ -223,6 +258,8 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                             'price': double.parse(_priceController.text),
                             'category': _selectedCategory,
                             'is_available': _isAvailable,
+                            'variants': _parseOptions(_variantsController.text),
+                            'addons': _parseOptions(_addonsController.text),
                           });
                         }
                         ref.invalidate(menusProvider);

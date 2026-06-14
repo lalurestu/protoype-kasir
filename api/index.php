@@ -196,7 +196,7 @@ try {
         ];
 
         $token = bin2hex(random_bytes(32));
-        $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 2 HOUR))");
+        $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 8 HOUR))");
         $stmtToken->execute([$user['id'], $token]);
 
         http_response_code(200);
@@ -266,6 +266,26 @@ try {
             $menu['is_available'] = (bool)($menu['is_available'] ?? true);
             $menu['stock'] = $menu['stock'] !== null ? (int)$menu['stock'] : null;
             $menu['min_stock'] = $menu['min_stock'] !== null ? (int)$menu['min_stock'] : 5;
+
+            // Fetch variants
+            $stmtVar = $pdo->prepare("SELECT id, name, price FROM menu_variants WHERE menu_id = ?");
+            $stmtVar->execute([$menu['id']]);
+            $variants = $stmtVar->fetchAll();
+            foreach ($variants as &$v) {
+                $v['id'] = (int)$v['id'];
+                $v['price'] = (double)$v['price'];
+            }
+            $menu['variants'] = $variants;
+
+            // Fetch addons
+            $stmtAdd = $pdo->prepare("SELECT id, name, price FROM menu_addons WHERE menu_id = ?");
+            $stmtAdd->execute([$menu['id']]);
+            $addons = $stmtAdd->fetchAll();
+            foreach ($addons as &$a) {
+                $a['id'] = (int)$a['id'];
+                $a['price'] = (double)$a['price'];
+            }
+            $menu['addons'] = $addons;
         }
 
         http_response_code(200);
@@ -309,6 +329,19 @@ try {
             // Auto-create stock record
             $pdo->prepare("INSERT INTO stock (menu_id, quantity, min_stock) VALUES (?, ?, ?)")
                 ->execute([$menuId, $initialStock, $minStock]);
+
+            if (!empty($input['variants']) && is_array($input['variants'])) {
+                $stmtVar = $pdo->prepare("INSERT INTO menu_variants (menu_id, name, price) VALUES (?, ?, ?)");
+                foreach ($input['variants'] as $v) {
+                    $stmtVar->execute([$menuId, $v['name'], $v['price']]);
+                }
+            }
+            if (!empty($input['addons']) && is_array($input['addons'])) {
+                $stmtAdd = $pdo->prepare("INSERT INTO menu_addons (menu_id, name, price) VALUES (?, ?, ?)");
+                foreach ($input['addons'] as $a) {
+                    $stmtAdd->execute([$menuId, $a['name'], $a['price']]);
+                }
+            }
 
             $pdo->commit();
         } catch (Exception $e) {
@@ -355,6 +388,24 @@ try {
         // Update min_stock if provided
         if (isset($input['min_stock'])) {
             $pdo->prepare("UPDATE stock SET min_stock = ? WHERE menu_id = ?")->execute([$input['min_stock'], $menuId]);
+        }
+
+        // Update variants
+        if (isset($input['variants']) && is_array($input['variants'])) {
+            $pdo->prepare("DELETE FROM menu_variants WHERE menu_id = ?")->execute([$menuId]);
+            $stmtVar = $pdo->prepare("INSERT INTO menu_variants (menu_id, name, price) VALUES (?, ?, ?)");
+            foreach ($input['variants'] as $v) {
+                $stmtVar->execute([$menuId, $v['name'], $v['price']]);
+            }
+        }
+
+        // Update addons
+        if (isset($input['addons']) && is_array($input['addons'])) {
+            $pdo->prepare("DELETE FROM menu_addons WHERE menu_id = ?")->execute([$menuId]);
+            $stmtAdd = $pdo->prepare("INSERT INTO menu_addons (menu_id, name, price) VALUES (?, ?, ?)");
+            foreach ($input['addons'] as $a) {
+                $stmtAdd->execute([$menuId, $a['name'], $a['price']]);
+            }
         }
 
         echo json_encode(["message" => "Menu updated successfully"]);
@@ -555,6 +606,7 @@ try {
         $shift['total_sales'] = (double)$shift['total_sales'];
         $shift['total_transactions'] = (int)$shift['total_transactions'];
 
+        http_response_code(201);
         echo json_encode(['message' => 'Shift berhasil dibuka', 'shift' => $shift]);
         exit;
 
@@ -574,7 +626,7 @@ try {
         }
 
         // Calculate total sales in this shift
-        $stmtSales = $pdo->prepare("SELECT SUM(total_amount) as total, COUNT(*) as count FROM transactions WHERE shift_id = ?");
+        $stmtSales = $pdo->prepare("SELECT SUM(total_amount) as total, COUNT(*) as count FROM transactions WHERE shift_id = ? AND status = 'completed'");
         $stmtSales->execute([$shiftId]);
         $salesData = $stmtSales->fetch();
         $totalSales = (double)($salesData['total'] ?? 0);
@@ -870,6 +922,8 @@ try {
         $subtotalAmount = (double)($input['subtotal_amount'] ?? $input['total_amount']);
         $customerId = isset($input['customer_id']) ? (int)$input['customer_id'] : null;
         $customerNote = $input['customer_note'] ?? null;
+        $status = $input['status'] ?? 'completed';
+        $tableNumber = $input['table_number'] ?? null;
 
         // Get active shift
         $stmtShift = $pdo->prepare("SELECT id FROM shifts WHERE kasir_id = ? AND status = 'open' ORDER BY opened_at DESC LIMIT 1");
@@ -882,26 +936,30 @@ try {
 
             $stmt = $pdo->prepare("
                 INSERT INTO transactions
-                (store_id, kasir_id, subtotal_amount, discount_amount, discount_type, tax_amount, tax_percent, total_amount, payment_method, customer_id, shift_id, customer_note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (store_id, kasir_id, subtotal_amount, discount_amount, discount_type, tax_amount, tax_percent, total_amount, payment_method, customer_id, shift_id, customer_note, status, table_number)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $storeId, $user['id'],
                 $subtotalAmount, $discountAmount, $discountType,
                 $taxAmount, $taxPercent, $input['total_amount'],
-                $paymentMethod, $customerId, $shiftId, $customerNote
+                $paymentMethod, $customerId, $shiftId, $customerNote, $status, $tableNumber
             ]);
             $transactionId = $pdo->lastInsertId();
 
             // Insert items & deduct stock
             if (!empty($input['items']) && is_array($input['items'])) {
-                $stmtItem = $pdo->prepare("INSERT INTO transaction_items (transaction_id, menu_id, quantity, price) VALUES (?, ?, ?, ?)");
+                $stmtItem = $pdo->prepare("INSERT INTO transaction_items (transaction_id, menu_id, quantity, price, variant_id, variant_name, addons_info) VALUES (?, ?, ?, ?, ?, ?, ?)");
                 foreach ($input['items'] as $item) {
+                    $addonsInfo = !empty($item['addons']) ? json_encode($item['addons']) : null;
                     $stmtItem->execute([
                         $transactionId,
                         $item['menu_id'],
                         $item['quantity'],
-                        $item['price']
+                        $item['price'],
+                        $item['variant_id'] ?? null,
+                        $item['variant_name'] ?? null,
+                        $addonsInfo
                     ]);
                     // Deduct stock
                     $pdo->prepare("UPDATE stock SET quantity = GREATEST(0, quantity - ?) WHERE menu_id = ?")
@@ -910,7 +968,7 @@ try {
             }
 
             // Update customer: add points + spend + visit count
-            if ($customerId) {
+            if ($customerId && $status === 'completed') {
                 $pointsEarned = (int)floor($input['total_amount'] / 1000);
                 $pdo->prepare("
                     UPDATE customers
@@ -943,6 +1001,152 @@ try {
             "message" => "Checkout successful",
             "transaction" => $transaction
         ]);
+        exit;
+
+    // =========================================================================
+    // SAVED BILLS ROUTES
+    // =========================================================================
+
+    } elseif ($method === 'GET' && $route === '/api/checkout/saved') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'kasir') {
+            http_response_code(403);
+            echo json_encode(["error" => "Forbidden: Only kasir can view saved bills"]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT t.id, t.created_at, t.total_amount, t.subtotal_amount, t.discount_amount, t.tax_amount, t.customer_id, t.table_number, t.customer_note
+            FROM transactions t
+            WHERE t.kasir_id = ? AND t.status = 'saved'
+            ORDER BY t.created_at ASC
+        ");
+        $stmt->execute([$user['id']]);
+        $transactions = $stmt->fetchAll();
+
+        foreach ($transactions as &$tx) {
+            $tx['id'] = (int)$tx['id'];
+            $tx['total_amount'] = (double)$tx['total_amount'];
+            $tx['subtotal_amount'] = (double)($tx['subtotal_amount'] ?? $tx['total_amount']);
+            $tx['discount_amount'] = (double)($tx['discount_amount'] ?? 0);
+            $tx['tax_amount'] = (double)($tx['tax_amount'] ?? 0);
+
+            $stmtItems = $pdo->prepare("
+                SELECT ti.quantity, ti.price, m.name, m.id as menu_id
+                FROM transaction_items ti
+                JOIN menus m ON ti.menu_id = m.id
+                WHERE ti.transaction_id = ?
+            ");
+            $stmtItems->execute([$tx['id']]);
+            $items = $stmtItems->fetchAll();
+            foreach ($items as &$it) {
+                $it['menu_id'] = (int)$it['menu_id'];
+                $it['quantity'] = (int)$it['quantity'];
+                $it['price'] = (double)$it['price'];
+            }
+            $tx['items'] = $items;
+
+            if ($tx['customer_id']) {
+                $stmtCust = $pdo->prepare("SELECT id, name, phone FROM customers WHERE id = ?");
+                $stmtCust->execute([$tx['customer_id']]);
+                $tx['customer'] = $stmtCust->fetch() ?: null;
+            } else {
+                $tx['customer'] = null;
+            }
+        }
+
+        echo json_encode($transactions);
+        exit;
+
+    } elseif ($method === 'PUT' && preg_match('/^\/api\/checkout\/(\d+)\/pay$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'kasir') {
+            http_response_code(403);
+            echo json_encode(["error" => "Forbidden"]);
+            exit;
+        }
+
+        $transactionId = $matches[1];
+        $input = json_decode(file_get_contents('php://input'), true);
+        $paymentMethod = $input['payment_method'] ?? 'cash';
+        
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM transactions WHERE id = ? AND status = 'saved' AND kasir_id = ? FOR UPDATE");
+            $stmt->execute([$transactionId, $user['id']]);
+            $tx = $stmt->fetch();
+
+            if (!$tx) {
+                http_response_code(404);
+                echo json_encode(["error" => "Saved bill not found or already paid"]);
+                $pdo->rollBack();
+                exit;
+            }
+
+            $pdo->prepare("UPDATE transactions SET status = 'completed', payment_method = ? WHERE id = ?")
+                ->execute([$paymentMethod, $transactionId]);
+
+            // Update customer points
+            if ($tx['customer_id']) {
+                $pointsEarned = (int)floor($tx['total_amount'] / 1000);
+                $pdo->prepare("
+                    UPDATE customers
+                    SET points = points + ?, total_spend = total_spend + ?, visit_count = visit_count + 1
+                    WHERE id = ?
+                ")->execute([$pointsEarned, $tx['total_amount'], $tx['customer_id']]);
+            }
+
+            $pdo->commit();
+            echo json_encode(["message" => "Bill paid successfully"]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(["error" => "Failed to pay bill: " . $e->getMessage()]);
+        }
+        exit;
+
+    } elseif ($method === 'DELETE' && preg_match('/^\/api\/checkout\/(\d+)$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'kasir') {
+            http_response_code(403);
+            echo json_encode(["error" => "Forbidden"]);
+            exit;
+        }
+
+        $transactionId = $matches[1];
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM transactions WHERE id = ? AND status = 'saved' AND kasir_id = ?");
+            $stmt->execute([$transactionId, $user['id']]);
+            $tx = $stmt->fetch();
+
+            if (!$tx) {
+                http_response_code(404);
+                echo json_encode(["error" => "Saved bill not found"]);
+                $pdo->rollBack();
+                exit;
+            }
+
+            // Restore stock
+            $stmtItems = $pdo->prepare("SELECT menu_id, quantity FROM transaction_items WHERE transaction_id = ?");
+            $stmtItems->execute([$transactionId]);
+            $items = $stmtItems->fetchAll();
+
+            foreach ($items as $item) {
+                $pdo->prepare("UPDATE stock SET quantity = quantity + ? WHERE menu_id = ?")
+                    ->execute([$item['quantity'], $item['menu_id']]);
+            }
+
+            $pdo->prepare("UPDATE transactions SET status = 'cancelled' WHERE id = ?")
+                ->execute([$transactionId]);
+
+            $pdo->commit();
+            echo json_encode(["message" => "Saved bill cancelled successfully"]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(["error" => "Failed to cancel bill: " . $e->getMessage()]);
+        }
         exit;
 
     // =========================================================================
@@ -1140,7 +1344,7 @@ try {
                 SUM(discount_amount) as total_discount,
                 SUM(tax_amount) as total_tax
             FROM transactions
-            WHERE kasir_id = ? AND DATE(created_at) = CURDATE()
+            WHERE kasir_id = ? AND DATE(created_at) = CURDATE() AND status = 'completed'
         ");
         $stmt->execute([$user['id']]);
         $report = $stmt->fetch();
@@ -1148,7 +1352,7 @@ try {
         $stmtTx = $pdo->prepare("
             SELECT id, created_at, payment_method, total_amount, subtotal_amount, discount_amount, tax_amount, customer_id
             FROM transactions
-            WHERE kasir_id = ? AND DATE(created_at) = CURDATE()
+            WHERE kasir_id = ? AND DATE(created_at) = CURDATE() AND status = 'completed'
             ORDER BY created_at DESC
         ");
         $stmtTx->execute([$user['id']]);
@@ -1226,7 +1430,7 @@ try {
                 SUM(t.tax_amount) as total_tax
             FROM transactions t
             JOIN stores s ON t.store_id = s.id
-            WHERE s.owner_id = ?
+            WHERE s.owner_id = ? AND t.status = 'completed'
             GROUP BY period_date
             ORDER BY period_date DESC
         ");
@@ -1246,7 +1450,7 @@ try {
                     SELECT t.id, t.created_at, t.total_amount, t.payment_method, t.discount_amount, t.tax_amount
                     FROM transactions t
                     JOIN stores s ON t.store_id = s.id
-                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
+                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ? AND t.status = 'completed'
                     ORDER BY t.created_at DESC
                 ");
                 $stmtDet->execute([$user['id'], $dateFormat, $r['period_date']]);
@@ -1278,7 +1482,7 @@ try {
                         SUM(t.total_amount) as sub_total_revenue
                     FROM transactions t
                     JOIN stores s ON t.store_id = s.id
-                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
+                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ? AND t.status = 'completed'
                     GROUP BY sub_period_date
                     ORDER BY sub_period_date DESC
                 ");
@@ -1295,7 +1499,7 @@ try {
                         SUM(t.total_amount) as sub_total_revenue
                     FROM transactions t
                     JOIN stores s ON t.store_id = s.id
-                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ?
+                    WHERE s.owner_id = ? AND DATE_FORMAT(t.created_at, ?) = ? AND t.status = 'completed'
                     GROUP BY sub_period_date
                     ORDER BY sub_period_date DESC
                 ");
@@ -1391,6 +1595,127 @@ try {
                 ->execute([$kasirId, $store['id']]);
         }
         echo json_encode(['message' => 'Kasir dihapus']); exit;
+
+    } elseif ($method === 'GET' && $route === '/api/owner/analytics') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error'=>'Forbidden']); exit; }
+
+        $stmtStore = $pdo->prepare("SELECT id FROM stores WHERE owner_id = ? LIMIT 1");
+        $stmtStore->execute([$user['id']]);
+        $store = $stmtStore->fetch();
+        if (!$store) { http_response_code(400); echo json_encode(['error'=>'Store not found']); exit; }
+
+        // Daily sales for the last 7 days
+        $stmtSales = $pdo->prepare("
+            SELECT DATE(created_at) as date, SUM(total_amount) as total
+            FROM transactions
+            WHERE store_id = ? AND created_at >= DATE(NOW()) - INTERVAL 6 DAY
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        ");
+        $stmtSales->execute([$store['id']]);
+        $dailySales = $stmtSales->fetchAll();
+
+        // Top 5 menus
+        $stmtTopMenus = $pdo->prepare("
+            SELECT m.name, SUM(ti.quantity) as sold
+            FROM transaction_items ti
+            JOIN transactions t ON ti.transaction_id = t.id
+            JOIN menus m ON ti.menu_id = m.id
+            WHERE t.store_id = ?
+            GROUP BY m.id
+            ORDER BY sold DESC
+            LIMIT 5
+        ");
+        $stmtTopMenus->execute([$store['id']]);
+        $topMenus = $stmtTopMenus->fetchAll();
+
+        echo json_encode([
+            'daily_sales' => $dailySales,
+            'top_menus' => $topMenus
+        ]);
+        exit;
+
+    } elseif ($method === 'GET' && $route === '/api/owner/export-data') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error'=>'Forbidden']); exit; }
+
+        $stmtStore = $pdo->prepare("SELECT id FROM stores WHERE owner_id = ? LIMIT 1");
+        $stmtStore->execute([$user['id']]);
+        $store = $stmtStore->fetch();
+        if (!$store) { http_response_code(400); echo json_encode(['error'=>'Store not found']); exit; }
+
+        $period = $_GET['period'] ?? 'mingguan';
+        
+        $dateFilter = "";
+        $groupBy = "DATE(created_at)";
+        $selectDate = "DATE(created_at) as date";
+
+        if ($period === 'harian') {
+            $dateFilter = "AND DATE(t.created_at) = DATE(NOW())";
+            $groupBy = "HOUR(t.created_at)";
+            $selectDate = "CONCAT(HOUR(t.created_at), ':00') as date";
+        } elseif ($period === 'mingguan') {
+            $dateFilter = "AND t.created_at >= DATE(NOW()) - INTERVAL 6 DAY";
+        } elseif ($period === 'bulanan') {
+            $dateFilter = "AND t.created_at >= DATE(NOW()) - INTERVAL 29 DAY";
+        } elseif ($period === 'tahunan') {
+            $dateFilter = "AND t.created_at >= DATE(NOW()) - INTERVAL 1 YEAR";
+            $groupBy = "DATE_FORMAT(t.created_at, '%Y-%m')";
+            $selectDate = "DATE_FORMAT(t.created_at, '%Y-%m') as date";
+        }
+
+        // Stats
+        $stmtStats = $pdo->prepare("
+            SELECT SUM(total_amount) as total_revenue, COUNT(id) as total_transactions
+            FROM transactions t
+            WHERE t.store_id = ? $dateFilter
+        ");
+        $stmtStats->execute([$store['id']]);
+        $stats = $stmtStats->fetch();
+
+        // Total Customers
+        $stmtCust = $pdo->prepare("
+            SELECT COUNT(DISTINCT customer_id) as total_customers
+            FROM transactions t
+            WHERE t.store_id = ? AND customer_id IS NOT NULL AND customer_id != 0 $dateFilter
+        ");
+        $stmtCust->execute([$store['id']]);
+        $cust = $stmtCust->fetch();
+
+        // Sales trend
+        $stmtSales = $pdo->prepare("
+            SELECT $selectDate, SUM(total_amount) as total
+            FROM transactions t
+            WHERE t.store_id = ? $dateFilter
+            GROUP BY $groupBy
+            ORDER BY MIN(t.created_at) ASC
+        ");
+        $stmtSales->execute([$store['id']]);
+        $dailySales = $stmtSales->fetchAll();
+
+        // Top 5 menus
+        $stmtTopMenus = $pdo->prepare("
+            SELECT m.name, SUM(ti.quantity) as sold
+            FROM transaction_items ti
+            JOIN transactions t ON ti.transaction_id = t.id
+            JOIN menus m ON ti.menu_id = m.id
+            WHERE t.store_id = ? $dateFilter
+            GROUP BY m.id
+            ORDER BY sold DESC
+            LIMIT 5
+        ");
+        $stmtTopMenus->execute([$store['id']]);
+        $topMenus = $stmtTopMenus->fetchAll();
+
+        echo json_encode([
+            'total_revenue' => (double)($stats['total_revenue'] ?? 0),
+            'total_transactions' => (int)($stats['total_transactions'] ?? 0),
+            'total_customers' => (int)($cust['total_customers'] ?? 0),
+            'daily_sales' => $dailySales,
+            'top_menus' => $topMenus
+        ]);
+        exit;
 
     // =========================================================================
     // SUPER ADMIN ROUTES

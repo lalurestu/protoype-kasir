@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 // Note: Using print_bluetooth_thermal package (works on Android & iOS)
 // Add to pubspec.yaml: print_bluetooth_thermal: ^1.0.7
@@ -21,33 +22,41 @@ class PrinterService {
 
   /// Scan for nearby Bluetooth devices
   Future<List<Map<String, String>>> scanDevices() async {
-    // TODO: Implement with print_bluetooth_thermal package
-    // final paired = await PrintBluetoothThermal.pairedBluetooths;
-    // return paired.map((bt) => {'name': bt.name, 'mac': bt.macAdress}).toList();
-
-    // Stub: return mock devices
-    await Future.delayed(const Duration(seconds: 1));
-    return [
-      {'name': 'Printer POS 58mm', 'mac': '00:11:22:33:44:55'},
-      {'name': 'Epson TM-T82', 'mac': 'AA:BB:CC:DD:EE:FF'},
-    ];
+    try {
+      final isPermissionGranted = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!isPermissionGranted) {
+        debugPrint('Bluetooth permission not granted');
+      }
+      final paired = await PrintBluetoothThermal.pairedBluetooths;
+      return paired.map((bt) => {'name': bt.name, 'mac': bt.macAdress}).toList();
+    } catch (e) {
+      debugPrint('Error scanning devices: $e');
+      return [];
+    }
   }
 
   /// Connect to a Bluetooth printer by MAC address
   Future<bool> connect(String macAddress, String deviceName) async {
-    // TODO: Implement with print_bluetooth_thermal package
-    // final result = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
-    // _isConnected = result;
-
-    await Future.delayed(const Duration(milliseconds: 500));
-    _isConnected = true;
-    _connectedDevice = deviceName;
-    return true;
+    try {
+      final result = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
+      _isConnected = result;
+      if (result) {
+        _connectedDevice = deviceName;
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Error connecting to printer: $e');
+      return false;
+    }
   }
 
   /// Disconnect from current printer
   Future<void> disconnect() async {
-    // TODO: await PrintBluetoothThermal.disconnect;
+    try {
+      await PrintBluetoothThermal.disconnect;
+    } catch (e) {
+      debugPrint('Error disconnecting: $e');
+    }
     _isConnected = false;
     _connectedDevice = '';
   }
@@ -63,12 +72,13 @@ class PrinterService {
     final receiptLines = _buildReceiptLines(transaction);
     final receiptBytes = _encodeReceipt(receiptLines);
 
-    // TODO: Implement with print_bluetooth_thermal package
-    // final result = await PrintBluetoothThermal.writeBytes(receiptBytes);
-    // if (!result) throw Exception('Gagal mengirim data ke printer');
-
-    // Stub: simulate printing delay
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      final result = await PrintBluetoothThermal.writeBytes(receiptBytes);
+      if (!result) throw Exception('Gagal mengirim data ke printer');
+    } catch (e) {
+      debugPrint('Print error: $e');
+      // If error, print the preview in console anyway
+    }
 
     debugPrint('=== RECEIPT PREVIEW ===\n${receiptLines.join('\n')}\n====================');
   }

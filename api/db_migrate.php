@@ -90,11 +90,14 @@ try {
         "ALTER TABLE `transactions` ADD COLUMN `shift_id` INT NULL;",
         "ALTER TABLE `transactions` ADD COLUMN `subtotal_amount` DECIMAL(15,2) DEFAULT 0 NOT NULL;",
         "ALTER TABLE `transactions` ADD COLUMN `customer_note` TEXT NULL;",
+        "ALTER TABLE `transactions` ADD COLUMN `status` ENUM('completed', 'saved', 'cancelled') DEFAULT 'completed' NOT NULL;",
+        "ALTER TABLE `transactions` ADD COLUMN `table_number` VARCHAR(20) NULL;",
     ];
 
     $txAlterCols = [
         'discount_amount', 'discount_type', 'tax_amount', 'tax_percent',
-        'customer_id', 'shift_id', 'subtotal_amount', 'customer_note'
+        'customer_id', 'shift_id', 'subtotal_amount', 'customer_note',
+        'status', 'table_number'
     ];
 
     foreach ($txAlters as $i => $sql) {
@@ -121,11 +124,48 @@ try {
     }
     echo "[OK] Stock awal diisi untuk $insertedStock menu.\n";
 
+    // ─────────────────────────────────────────────────────────────────────
+    // 6. CREATE TABLE menu_variants
+    // ─────────────────────────────────────────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `menu_variants` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `menu_id` INT NOT NULL,
+        `name` VARCHAR(100) NOT NULL,
+        `price` DECIMAL(10, 2) NOT NULL,
+        FOREIGN KEY (`menu_id`) REFERENCES `menus` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB;");
+    echo "[OK] Tabel 'menu_variants' siap.\n";
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 7. CREATE TABLE menu_addons
+    // ─────────────────────────────────────────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `menu_addons` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `menu_id` INT NOT NULL,
+        `name` VARCHAR(100) NOT NULL,
+        `price` DECIMAL(10, 2) NOT NULL,
+        FOREIGN KEY (`menu_id`) REFERENCES `menus` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB;");
+    echo "[OK] Tabel 'menu_addons' siap.\n";
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 8. ALTER TABLE transaction_items
+    // ─────────────────────────────────────────────────────────────────────
+    try {
+        $pdo->exec("ALTER TABLE `transaction_items` ADD COLUMN `variant_id` INT NULL;");
+        $pdo->exec("ALTER TABLE `transaction_items` ADD COLUMN `variant_name` VARCHAR(100) NULL;");
+        $pdo->exec("ALTER TABLE `transaction_items` ADD COLUMN `addons_info` TEXT NULL;"); // JSON of addons {"name": "Keju", "price": 5000}
+        echo "[OK] transaction_items: kolom variant & addons ditambahkan.\n";
+    } catch (PDOException $e) {
+        echo "[SKIP] transaction_items.variant_id sudah ada.\n";
+    }
+
     echo "\n=== Migrasi Selesai! ===\n";
     echo "Semua tabel dan kolom baru telah ditambahkan.\n";
     echo "Data yang sudah ada tetap aman.\n";
 
-} catch (PDOException $e) {
-    echo "Migration GAGAL: " . $e->getMessage() . "\n";
+} catch (Exception $e) {
+    echo "\n[ERROR] Migrasi gagal:\n";
+    echo $e->getMessage() . "\n";
     exit(1);
 }

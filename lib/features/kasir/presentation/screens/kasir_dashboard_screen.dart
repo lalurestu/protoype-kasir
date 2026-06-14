@@ -525,6 +525,18 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Pengaturan Printer
+            _buildActionCard(
+              title: 'Pengaturan Printer',
+              subtitle: 'Hubungkan printer struk bluetooth',
+              icon: Icons.print,
+              color: AppTheme.surfaceDark,
+              borderColor: Colors.blueAccent.withOpacity(0.3),
+              iconColor: Colors.blueAccent,
+              onTap: () => context.goNamed(RouteNames.printerSettings),
+            ),
+            const SizedBox(height: 16),
+
             // Sinkronisasi Offline
             _buildActionCard(
               title: 'Sinkronisasi Offline',
