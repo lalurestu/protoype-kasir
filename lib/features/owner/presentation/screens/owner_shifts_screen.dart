@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/currency_formatter.dart';
 import '../../../kasir/presentation/providers/shift_provider.dart';
 import '../../../../shared/models/shift_model.dart';
 
@@ -69,7 +70,7 @@ class OwnerShiftsScreen extends ConsumerWidget {
                             Icons.lock_open, AppTheme.secondaryColor)),
                     Expanded(
                         child: _statBlock('Total Penjualan',
-                            'Rp ${totalSales.toStringAsFixed(0)}',
+                            CurrencyFormatter.formatCompact(totalSales),
                             Icons.payments, Colors.amber)),
                   ],
                 ),
@@ -175,9 +176,9 @@ class OwnerShiftsScreen extends ConsumerWidget {
             // Shift details
             Row(
               children: [
-                Expanded(child: _detailItem('Kas Awal', 'Rp ${shift.openingCash.toStringAsFixed(0)}', Colors.white)),
-                Expanded(child: _detailItem('Penjualan', 'Rp ${shift.totalSales.toStringAsFixed(0)}', AppTheme.secondaryColor)),
-                Expanded(child: _detailItem('Transaksi', '${shift.totalTransactions}', Colors.blue)),
+                  Expanded(child: _detailItem('Kas Awal', CurrencyFormatter.format(shift.openingCash), Colors.white)),
+                Expanded(child: _detailItem('Penjualan', CurrencyFormatter.format(shift.totalSales), AppTheme.secondaryColor)),
+                Expanded(child: _detailItem('Transaksi', '${shift.totalTransactions} txn', Colors.blue)),
               ],
             ),
 
@@ -185,12 +186,12 @@ class OwnerShiftsScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(child: _detailItem('Kas Akhir', 'Rp ${shift.closingCash!.toStringAsFixed(0)}', Colors.white)),
+                  Expanded(child: _detailItem('Kas Akhir', CurrencyFormatter.format(shift.closingCash!), Colors.white)),
                   if (diff != null)
                     Expanded(
                       child: _detailItem(
                           'Selisih',
-                          '${diff >= 0 ? '+' : ''}Rp ${diff.toStringAsFixed(0)}',
+                          CurrencyFormatter.formatDelta(diff),
                           diff >= 0 ? AppTheme.secondaryColor : AppTheme.error),
                     ),
                 ],

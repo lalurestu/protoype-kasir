@@ -3,244 +3,1101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Super Admin Portal — POS Multi-Tenant</title>
+    <meta name="description" content="Portal Super Admin untuk mengelola tenant dan owner sistem POS Multi-Tenant.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        /* ════════════════════════════════════════════════════════
+           CSS VARIABLES & RESET
+           ════════════════════════════════════════════════════════ */
+        :root {
+            --bg-900: #0f172a;
+            --bg-800: #1e293b;
+            --bg-700: #334155;
+            --surface: #1e293b;
+            --surface-glow: rgba(99, 102, 241, 0.08);
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --secondary: #10b981;
+            --secondary-light: #34d399;
+            --danger: #ef4444;
+            --danger-light: #fca5a5;
+            --warning: #f59e0b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(255,255,255,0.08);
+            --border-strong: rgba(255,255,255,0.15);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.2);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-900);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* ════════════════════════════════════════════════════════
+           ANIMATIONS
+           ════════════════════════════════════════════════════════ */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+            70% { transform: scale(1); box-shadow: 0 0 0 12px rgba(99,102,241,0); }
+            100% { transform: scale(0.95); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+
+        .animate-fade-up { animation: fadeUp 0.5s ease-out forwards; }
+        .animate-delay-1 { animation-delay: 0.1s; }
+        .animate-delay-2 { animation-delay: 0.2s; }
+        .animate-delay-3 { animation-delay: 0.3s; }
+
+        /* ════════════════════════════════════════════════════════
+           LOGIN SCREEN
+           ════════════════════════════════════════════════════════ */
+        .login-bg {
+            min-height: 100vh;
+            background: radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 50%, rgba(16,185,129,0.08) 0%, transparent 50%),
+                        var(--bg-900);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--bg-800);
+            border: 1px solid var(--border-strong);
+            border-radius: 24px;
+            padding: 48px 40px;
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
+            animation: fadeUp 0.6s ease-out;
+        }
+
+        .login-logo {
+            width: 72px;
+            height: 72px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 28px;
+            font-size: 32px;
+            box-shadow: 0 8px 32px rgba(99,102,241,0.4);
+            animation: pulse-ring 2s infinite;
+        }
+
+        .login-title {
+            font-size: 28px;
+            font-weight: 800;
+            text-align: center;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .login-subtitle {
+            font-size: 14px;
+            text-align: center;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            margin-bottom: 36px;
+        }
+
+        .form-group { margin-bottom: 20px; }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: var(--primary);
+            background: rgba(99,102,241,0.06);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 8px 20px rgba(99,102,241,0.35);
+            letter-spacing: 0.3px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 28px rgba(99,102,241,0.5);
+        }
+
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .error-banner {
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.4);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            color: #fca5a5;
+            font-size: 13px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ════════════════════════════════════════════════════════
+           DASHBOARD LAYOUT
+           ════════════════════════════════════════════════════════ */
+        .dashboard {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: var(--bg-800);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+        }
+
+        .sidebar-brand {
+            padding: 28px 24px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand-logo {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 16px rgba(99,102,241,0.3);
+        }
+
+        .brand-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .brand-tagline {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .sidebar-nav { padding: 20px 12px; flex: 1; }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+
+        .nav-item.active {
+            background: rgba(99,102,241,0.15);
+            color: var(--primary-light);
+            border: 1px solid rgba(99,102,241,0.25);
+        }
+
+        .nav-icon { font-size: 18px; }
+
+        .sidebar-footer {
+            padding: 16px 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-logout {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            background: rgba(239,68,68,0.1);
+            color: #fca5a5;
+            border: 1px solid rgba(239,68,68,0.25);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .btn-logout:hover {
+            background: rgba(239,68,68,0.2);
+            border-color: rgba(239,68,68,0.5);
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-900);
+        }
+
+        .content-header {
+            padding: 28px 32px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-800);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .content-title { font-size: 20px; font-weight: 700; }
+        .content-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+
+        /* ════════════════════════════════════════════════════════
+           STATS CARDS
+           ════════════════════════════════════════════════════════ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            padding: 24px 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-800);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            transition: all 0.3s;
+            animation: fadeUp 0.5s ease-out forwards;
+            opacity: 0;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-strong);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 16px;
+        }
+
+        .stat-label { font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; }
+        .stat-value { font-size: 32px; font-weight: 800; color: var(--text-primary); margin-top: 4px; }
+        .stat-change { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+        /* ════════════════════════════════════════════════════════
+           TABLE SECTION
+           ════════════════════════════════════════════════════════ */
+        .table-section { padding: 0 32px 32px; }
+
+        .table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .table-title { font-size: 18px; font-weight: 700; }
+
+        .btn-generate {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, var(--secondary), #059669);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 16px rgba(16,185,129,0.3);
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(16,185,129,0.4);
+        }
+
+        .table-container {
+            background: var(--bg-800);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        }
+
+        table { width: 100%; border-collapse: collapse; }
+
+        thead { background: rgba(255,255,255,0.03); }
+
+        th {
+            padding: 16px 24px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+            font-size: 14px;
+        }
+
+        tr:last-child td { border-bottom: none; }
+
+        tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .owner-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .owner-info { display: flex; align-items: center; gap: 14px; }
+        .owner-name { font-weight: 600; color: var(--text-primary); }
+        .owner-date { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+        }
+
+        .status-active {
+            background: rgba(16,185,129,0.15);
+            color: var(--secondary-light);
+            border: 1px solid rgba(16,185,129,0.3);
+        }
+
+        .status-active .status-dot { background: var(--secondary); }
+
+        .status-suspended {
+            background: rgba(239,68,68,0.12);
+            color: var(--danger-light);
+            border: 1px solid rgba(239,68,68,0.3);
+        }
+
+        .status-suspended .status-dot { background: var(--danger); }
+
+        .btn-toggle {
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+
+        .btn-suspend {
+            background: rgba(239,68,68,0.1);
+            color: #fca5a5;
+            border-color: rgba(239,68,68,0.3);
+        }
+
+        .btn-suspend:hover {
+            background: rgba(239,68,68,0.2);
+            border-color: rgba(239,68,68,0.6);
+        }
+
+        .btn-activate {
+            background: rgba(16,185,129,0.12);
+            color: var(--secondary-light);
+            border-color: rgba(16,185,129,0.3);
+        }
+
+        .btn-activate:hover {
+            background: rgba(16,185,129,0.22);
+            border-color: rgba(16,185,129,0.6);
+        }
+
+        /* ════════════════════════════════════════════════════════
+           CODE DISPLAY
+           ════════════════════════════════════════════════════════ */
+        .code-banner {
+            background: rgba(16,185,129,0.08);
+            border: 1px solid rgba(16,185,129,0.25);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin: 0 32px 24px;
+            animation: fadeUp 0.4s ease-out;
+        }
+
+        .code-banner-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--secondary-light);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .code-display {
+            background: var(--bg-900);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-sm);
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .code-value {
+            font-family: 'Courier New', monospace;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 6px;
+            color: var(--text-primary);
+            background: linear-gradient(90deg, var(--primary-light), var(--secondary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .btn-copy {
+            padding: 10px 18px;
+            background: rgba(99,102,241,0.15);
+            color: var(--primary-light);
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-copy:hover {
+            background: rgba(99,102,241,0.25);
+            border-color: var(--primary);
+        }
+
+        .code-instruction {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 12px;
+        }
+
+        /* ════════════════════════════════════════════════════════
+           MODAL
+           ════════════════════════════════════════════════════════ */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 24px;
+            backdrop-filter: blur(4px);
+            animation: fadeUp 0.2s ease-out;
+        }
+
+        .modal-card {
+            background: var(--bg-800);
+            border: 1px solid var(--border-strong);
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .modal-message {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .btn-cancel {
+            padding: 10px 20px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-cancel:hover { background: rgba(255,255,255,0.05); }
+
+        .btn-confirm-suspend {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, var(--danger), #b91c1c);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-confirm-activate {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, var(--secondary), #059669);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        /* ════════════════════════════════════════════════════════
+           LOADING & EMPTY
+           ════════════════════════════════════════════════════════ */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 64px 24px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-text { font-size: 15px; }
+
+        /* ════════════════════════════════════════════════════════
+           LOADING SKELETON
+           ════════════════════════════════════════════════════════ */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg-700) 25%, var(--bg-800) 50%, var(--bg-700) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            height: 16px;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            .dashboard { flex-direction: column; }
+            .sidebar { width: 100%; min-width: unset; height: auto; }
+            .stats-grid { padding: 16px; grid-template-columns: repeat(2, 1fr); }
+            .table-section { padding: 0 16px 24px; }
+            .content-header { padding: 20px 16px; }
+            .code-banner { margin: 0 16px 16px; }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans">
-    <div id="app" class="min-h-screen">
-        <!-- Login Screen -->
-        <div v-if="!token" class="flex items-center justify-center min-h-screen bg-gray-900">
-            <div class="bg-white p-8 rounded-lg shadow-lg w-96">
-                <div class="flex justify-center mb-6">
-                    <svg class="w-16 h-16 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                </div>
-                <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">Super Admin Login</h1>
-                <form @submit.prevent="login">
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Email</label>
-                        <input v-model="email" type="email" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
-                    </div>
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Kata Sandi</label>
-                        <input v-model="password" type="password" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
-                    </div>
-                    <button type="submit" :disabled="isLoading" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full">
-                        {{ isLoading ? 'Memproses...' : 'Masuk' }}
-                    </button>
-                    <p v-if="error" class="text-red-500 text-xs italic mt-4">{{ error }}</p>
-                </form>
+<body>
+<div id="app">
+
+    <!-- ══════════════════════════════════════════════════════════
+         LOGIN SCREEN
+         ══════════════════════════════════════════════════════════ -->
+    <div v-if="!token" class="login-bg">
+        <div class="login-card">
+            <div class="login-logo">🛡️</div>
+            <h1 class="login-title">Super Admin</h1>
+            <p class="login-subtitle">Portal kontrol sistem POS Multi-Tenant.<br>Hanya untuk administrator resmi.</p>
+
+            <div v-if="error" class="error-banner">
+                <span>⚠️</span>
+                <span>{{ error }}</span>
             </div>
+
+            <form @submit.prevent="login">
+                <div class="form-group">
+                    <label class="form-label">Alamat Email</label>
+                    <input v-model="email" type="email" class="form-input"
+                           placeholder="admin@example.com" required autocomplete="email">
+                </div>
+                <div class="form-group" style="margin-bottom: 28px;">
+                    <label class="form-label">Kata Sandi</label>
+                    <input v-model="password" type="password" class="form-input"
+                           placeholder="••••••••" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn-primary" :disabled="isLoading" id="btn-login">
+                    <span v-if="!isLoading">🔐 Masuk ke Portal Admin</span>
+                    <span v-else style="display:flex;align-items:center;justify-content:center;gap:10px">
+                        <span class="spinner"></span> Memverifikasi...
+                    </span>
+                </button>
+            </form>
         </div>
+    </div>
 
-        <!-- Dashboard -->
-        <div v-else class="flex h-screen bg-gray-100">
-            <!-- Sidebar -->
-            <div class="w-64 bg-gray-900 text-white flex flex-col">
-                <div class="p-6 flex items-center space-x-3">
-                    <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                    <h2 class="text-xl font-bold">Portal Admin</h2>
+    <!-- ══════════════════════════════════════════════════════════
+         DASHBOARD
+         ══════════════════════════════════════════════════════════ -->
+    <div v-else class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-logo">🛡️</div>
+                <div class="brand-name">Portal Super Admin</div>
+                <div class="brand-tagline">POS Multi-Tenant Management</div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-item active" @click="currentView = 'owners'">
+                    <span class="nav-icon">👥</span>
+                    <span>Manajemen Tenant</span>
                 </div>
-                <nav class="flex-1 px-4 mt-6">
-                    <a href="#" class="block py-3 px-4 bg-gray-800 rounded font-semibold flex items-center">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                        Manajemen Owner
-                    </a>
-                </nav>
-                <div class="p-4">
-                    <button @click="logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded w-full flex items-center justify-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-                        Keluar
-                    </button>
+                <div class="nav-item" style="cursor:default;opacity:0.4;">
+                    <span class="nav-icon">📊</span>
+                    <span>Statistik Global</span>
+                    <span style="font-size:10px;background:rgba(99,102,241,0.2);color:#818cf8;padding:2px 8px;border-radius:4px;margin-left:auto;">Segera</span>
+                </div>
+                <div class="nav-item" style="cursor:default;opacity:0.4;">
+                    <span class="nav-icon">🔧</span>
+                    <span>Pengaturan Sistem</span>
+                    <span style="font-size:10px;background:rgba(99,102,241,0.2);color:#818cf8;padding:2px 8px;border-radius:4px;margin-left:auto;">Segera</span>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="btn-logout" @click="logout" id="btn-logout">
+                    <span>🚪</span>
+                    <span>Keluar dari Portal</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="content-header">
+                <div>
+                    <div class="content-title">Manajemen Tenant (Owner)</div>
+                    <div class="content-subtitle">
+                        Kontrol akses masuk dan status semua pemilik toko dalam sistem
+                    </div>
+                </div>
+                <button class="btn-generate" @click="generateCode" id="btn-generate-code">
+                    <span>✨</span>
+                    <span>Buat Kode Pendaftaran</span>
+                </button>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card" style="animation-delay: 0.0s;">
+                    <div class="stat-icon" style="background:rgba(99,102,241,0.15);">🏢</div>
+                    <div class="stat-label">Total Tenant</div>
+                    <div class="stat-value">{{ owners.length }}</div>
+                    <div class="stat-change">Terdaftar dalam sistem</div>
+                </div>
+                <div class="stat-card" style="animation-delay: 0.1s;">
+                    <div class="stat-icon" style="background:rgba(16,185,129,0.15);">✅</div>
+                    <div class="stat-label">Tenant Aktif</div>
+                    <div class="stat-value" style="color:#34d399;">{{ activeCount }}</div>
+                    <div class="stat-change">Dapat menggunakan sistem</div>
+                </div>
+                <div class="stat-card" style="animation-delay: 0.2s;">
+                    <div class="stat-icon" style="background:rgba(239,68,68,0.15);">🔒</div>
+                    <div class="stat-label">Ditangguhkan</div>
+                    <div class="stat-value" style="color:#fca5a5;">{{ suspendedCount }}</div>
+                    <div class="stat-change">Akses diblokir sementara</div>
                 </div>
             </div>
 
-            <!-- Main Content -->
-            <div class="flex-1 overflow-y-auto p-8">
-                <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-sm">
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-800">Manajemen Tenant (Owner)</h1>
-                        <p class="text-gray-500 mt-1">Kontrol akses masuk untuk para pemilik toko</p>
-                    </div>
-                    <button @click="generateCode" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded shadow flex items-center transition duration-200">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                        Buat Kode Pendaftaran Baru
+            <!-- New Code Banner -->
+            <div v-if="newCode" class="code-banner">
+                <div class="code-banner-title">
+                    <span>🎉</span>
+                    <span>Kode Pendaftaran Baru Berhasil Dibuat!</span>
+                </div>
+                <div class="code-display">
+                    <div class="code-value">{{ newCode }}</div>
+                    <button class="btn-copy" @click="copyCode" id="btn-copy-code">
+                        {{ copied ? '✅ Tersalin!' : '📋 Salin Kode' }}
+                    </button>
+                </div>
+                <p class="code-instruction">
+                    💡 Berikan kode unik ini kepada calon Owner. Mereka wajib memasukkan kode ini saat mendaftar di aplikasi kasir. Kode hanya dapat digunakan sekali.
+                </p>
+            </div>
+
+            <!-- Owners Table -->
+            <div class="table-section">
+                <div class="table-header">
+                    <h2 class="table-title">Daftar Semua Tenant</h2>
+                    <button @click="fetchOwners" style="padding:10px 16px;background:rgba(255,255,255,0.06);color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-family:inherit;cursor:pointer;font-size:13px;" id="btn-refresh">
+                        🔄 Refresh
                     </button>
                 </div>
 
-                <div v-if="newCode" class="bg-green-50 border-l-4 border-green-500 text-green-700 p-6 mb-8 rounded-r-lg shadow-sm" role="alert">
-                    <div class="flex items-center mb-2">
-                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <p class="font-bold text-lg">Kode Verifikasi Berhasil Dibuat!</p>
+                <div class="table-container">
+                    <!-- Loading state -->
+                    <div v-if="isLoadingOwners" style="padding:48px;text-align:center;">
+                        <div class="spinner" style="width:32px;height:32px;margin:0 auto 16px;"></div>
+                        <div style="color:var(--text-muted);font-size:14px;">Memuat data tenant...</div>
                     </div>
-                    <div class="bg-white p-4 rounded mt-4 border border-green-200 flex justify-between items-center">
-                        <p class="text-3xl tracking-widest font-mono font-bold text-gray-800">{{ newCode }}</p>
-                        <button @click="copyCode" class="text-gray-500 hover:text-gray-700 font-semibold text-sm underline">Salin Kode</button>
-                    </div>
-                    <p class="text-sm mt-3 text-green-600 font-medium">Instruksi: Berikan kode unik ini kepada calon Owner. Mereka wajib memasukkan kode ini saat mendaftar di aplikasi Kasir.</p>
-                </div>
 
-                <div class="bg-white shadow-sm rounded-lg overflow-hidden border border-gray-200">
-                    <table class="min-w-full leading-normal">
+                    <!-- Empty state -->
+                    <div v-else-if="owners.length === 0" class="empty-state">
+                        <div class="empty-icon">👥</div>
+                        <div class="empty-text">Belum ada Owner yang terdaftar dalam sistem.</div>
+                        <div style="font-size:13px;color:var(--text-muted);margin-top:8px;">
+                            Buat kode pendaftaran untuk mengundang Owner pertama.
+                        </div>
+                    </div>
+
+                    <!-- Table -->
+                    <table v-else>
                         <thead>
                             <tr>
-                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Nama Owner</th>
-                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Email Akun</th>
-                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status Akses</th>
-                                <th class="px-6 py-4 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Aksi Super Admin</th>
+                                <th>Pemilik Toko</th>
+                                <th>Email Akun</th>
+                                <th>Status</th>
+                                <th>Bergabung</th>
+                                <th style="text-align:right;">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="owner in owners" :key="owner.id" class="hover:bg-gray-50 transition duration-150">
-                                <td class="px-6 py-5 border-b border-gray-200 text-sm">
-                                    <p class="text-gray-900 whitespace-no-wrap font-bold text-base">{{ owner.name }}</p>
-                                    <p class="text-xs text-gray-500 mt-1">Bergabung: {{ new Date(owner.created_at).toLocaleDateString() }}</p>
-                                </td>
-                                <td class="px-6 py-5 border-b border-gray-200 text-sm">
-                                    <div class="flex items-center">
-                                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-3 font-bold">
-                                            {{ owner.email.charAt(0).toUpperCase() }}
+                            <tr v-for="owner in owners" :key="owner.id">
+                                <td>
+                                    <div class="owner-info">
+                                        <div class="owner-avatar">{{ owner.name.charAt(0).toUpperCase() }}</div>
+                                        <div>
+                                            <div class="owner-name">{{ owner.name }}</div>
+                                            <div class="owner-date">ID: #{{ owner.id }}</div>
                                         </div>
-                                        <p class="text-gray-700 whitespace-no-wrap font-medium">{{ owner.email }}</p>
                                     </div>
                                 </td>
-                                <td class="px-6 py-5 border-b border-gray-200 text-sm">
-                                    <span v-if="owner.is_active" class="relative inline-block px-4 py-1.5 font-bold text-green-800 leading-tight">
-                                        <span aria-hidden class="absolute inset-0 bg-green-200 opacity-50 rounded-full"></span>
-                                        <span class="relative flex items-center"><span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span> Aktif</span>
+                                <td style="color:var(--text-secondary);">{{ owner.email }}</td>
+                                <td>
+                                    <span v-if="owner.is_active" class="status-badge status-active">
+                                        <span class="status-dot"></span> Aktif
                                     </span>
-                                    <span v-else class="relative inline-block px-4 py-1.5 font-bold text-red-800 leading-tight">
-                                        <span aria-hidden class="absolute inset-0 bg-red-200 opacity-50 rounded-full"></span>
-                                        <span class="relative flex items-center"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span> Diblokir</span>
+                                    <span v-else class="status-badge status-suspended">
+                                        <span class="status-dot"></span> Ditangguhkan
                                     </span>
                                 </td>
-                                <td class="px-6 py-5 border-b border-gray-200 text-sm text-right">
-                                    <button @click="toggleOwner(owner.id)" 
-                                            :class="owner.is_active ? 'bg-red-50 hover:bg-red-100 border-red-200 text-red-600' : 'bg-green-50 hover:bg-green-100 border-green-200 text-green-600'" 
-                                            class="font-bold border py-2 px-4 rounded shadow-sm transition duration-200">
-                                        {{ owner.is_active ? 'Blokir Akun' : 'Buka Blokir' }}
+                                <td style="color:var(--text-muted);font-size:13px;">
+                                    {{ formatDate(owner.created_at) }}
+                                </td>
+                                <td style="text-align:right;">
+                                    <button
+                                        @click="confirmToggle(owner)"
+                                        :class="owner.is_active ? 'btn-toggle btn-suspend' : 'btn-toggle btn-activate'"
+                                        :id="`btn-toggle-${owner.id}`">
+                                        {{ owner.is_active ? '🔒 Tangguhkan' : '✅ Aktifkan' }}
                                     </button>
-                                </td>
-                            </tr>
-                            <tr v-if="owners.length === 0">
-                                <td colspan="4" class="px-6 py-8 border-b border-gray-200 bg-white text-sm text-center text-gray-500">
-                                    <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                                    Belum ada Owner yang terdaftar di sistem.
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
+        </main>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         CONFIRMATION MODAL
+         ══════════════════════════════════════════════════════════ -->
+    <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+        <div class="modal-card">
+            <h3 class="modal-title">
+                {{ modalOwner?.is_active ? '🔒 Tangguhkan Akun?' : '✅ Aktifkan Akun?' }}
+            </h3>
+            <p class="modal-message">
+                <template v-if="modalOwner?.is_active">
+                    Akun <strong>{{ modalOwner?.name }}</strong> akan ditangguhkan.
+                    Owner dan semua Kasir miliknya <strong>tidak dapat login</strong> ke aplikasi
+                    sampai akun diaktifkan kembali.
+                </template>
+                <template v-else>
+                    Akun <strong>{{ modalOwner?.name }}</strong> akan diaktifkan kembali.
+                    Owner dan Kasirnya dapat menggunakan sistem secara normal.
+                </template>
+            </p>
+            <div class="modal-actions">
+                <button class="btn-cancel" @click="showModal = false">Batal</button>
+                <button
+                    :class="modalOwner?.is_active ? 'btn-confirm-suspend' : 'btn-confirm-activate'"
+                    @click="executeToggle"
+                    :disabled="isToggling">
+                    <span v-if="isToggling" class="spinner" style="width:16px;height:16px;"></span>
+                    <span v-else>{{ modalOwner?.is_active ? 'Ya, Tangguhkan' : 'Ya, Aktifkan' }}</span>
+                </button>
+            </div>
         </div>
     </div>
 
-    <script>
-        const { createApp, ref, onMounted } = Vue;
-        const API_URL = '../api';
+</div>
 
-        createApp({
-            setup() {
-                const token = ref(localStorage.getItem('admin_token') || '');
-                const email = ref('');
-                const password = ref('');
-                const error = ref('');
-                const isLoading = ref(false);
-                const owners = ref([]);
-                const newCode = ref('');
+<script>
+    const { createApp, ref, computed, onMounted } = Vue;
+    const API_URL = '../api';
 
-                const fetchOwners = async () => {
-                    if (!token.value) return;
-                    try {
-                        const res = await fetch(`${API_URL}/admin/owners`, {
-                            headers: { 'Authorization': `Bearer ${token.value}` }
-                        });
-                        if (res.status === 401 || res.status === 403) {
-                            logout();
-                            return;
-                        }
-                        const data = await res.json();
-                        owners.value = data;
-                    } catch (e) {
-                        console.error(e);
+    createApp({
+        setup() {
+            const token = ref(localStorage.getItem('admin_token') || '');
+            const email = ref('');
+            const password = ref('');
+            const error = ref('');
+            const isLoading = ref(false);
+            const isLoadingOwners = ref(false);
+            const isToggling = ref(false);
+            const owners = ref([]);
+            const newCode = ref('');
+            const copied = ref(false);
+            const showModal = ref(false);
+            const modalOwner = ref(null);
+            const currentView = ref('owners');
+
+            const activeCount = computed(() => owners.value.filter(o => o.is_active).length);
+            const suspendedCount = computed(() => owners.value.filter(o => !o.is_active).length);
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '-';
+                const d = new Date(dateStr);
+                return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+            };
+
+            const fetchOwners = async () => {
+                if (!token.value) return;
+                isLoadingOwners.value = true;
+                try {
+                    const res = await fetch(`${API_URL}/admin/owners`, {
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+                    if (res.status === 401 || res.status === 403) { logout(); return; }
+                    const data = await res.json();
+                    owners.value = Array.isArray(data) ? data : [];
+                } catch (e) {
+                    console.error('Gagal fetch owners:', e);
+                } finally {
+                    isLoadingOwners.value = false;
+                }
+            };
+
+            const login = async () => {
+                if (isLoading.value) return;
+                isLoading.value = true;
+                error.value = '';
+                try {
+                    const res = await fetch(`${API_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email.value, password: password.value })
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok) throw new Error(data.error || 'Email atau Kata Sandi salah!');
+                    if (data.user.role !== 'super_admin') {
+                        throw new Error('🚫 Akses Ditolak! Portal ini hanya untuk Super Admin.');
                     }
-                };
 
-                const login = async () => {
-                    isLoading.value = true;
-                    error.value = '';
-                    try {
-                        const res = await fetch(`${API_URL}/auth/login`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email: email.value, password: password.value })
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Email atau Kata Sandi salah!');
-                        
-                        if (data.user.role !== 'super_admin') {
-                            throw new Error('Akses Ditolak! Hanya Super Admin yang diizinkan masuk.');
-                        }
+                    token.value = data.access_token;
+                    localStorage.setItem('admin_token', data.access_token);
+                    fetchOwners();
+                } catch (e) {
+                    error.value = e.message;
+                } finally {
+                    isLoading.value = false;
+                }
+            };
 
-                        token.value = data.access_token;
-                        localStorage.setItem('admin_token', data.access_token);
-                        fetchOwners();
-                    } catch (e) {
-                        error.value = e.message;
-                    } finally {
-                        isLoading.value = false;
-                    }
-                };
+            const logout = () => {
+                token.value = '';
+                localStorage.removeItem('admin_token');
+            };
 
-                const logout = () => {
-                    token.value = '';
-                    localStorage.removeItem('admin_token');
-                };
+            const generateCode = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/admin/generate-code`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Gagal membuat kode');
+                    newCode.value = data.code;
+                    copied.value = false;
+                } catch (e) {
+                    alert('❌ Gagal membuat kode verifikasi: ' + e.message);
+                }
+            };
 
-                const generateCode = async () => {
-                    try {
-                        const res = await fetch(`${API_URL}/admin/generate-code`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token.value}` }
-                        });
-                        const data = await res.json();
-                        newCode.value = data.code;
-                    } catch (e) {
-                        alert('Gagal membuat kode verifikasi baru. Silakan coba lagi.');
-                    }
-                };
-
-                const copyCode = () => {
-                    navigator.clipboard.writeText(newCode.value);
-                    alert('Kode berhasil disalin: ' + newCode.value);
-                };
-
-                const toggleOwner = async (id) => {
-                    const confirmAction = confirm("Apakah Anda yakin ingin mengubah status akses Owner ini?");
-                    if (!confirmAction) return;
-
-                    try {
-                        const res = await fetch(`${API_URL}/admin/owners/${id}/toggle`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token.value}` }
-                        });
-                        if (res.ok) {
-                            fetchOwners();
-                        } else {
-                            throw new Error('Failed to toggle');
-                        }
-                    } catch (e) {
-                        alert('Terjadi kesalahan saat mengubah status.');
-                    }
-                };
-
-                onMounted(() => {
-                    if (token.value) fetchOwners();
+            const copyCode = () => {
+                navigator.clipboard.writeText(newCode.value).then(() => {
+                    copied.value = true;
+                    setTimeout(() => copied.value = false, 2500);
                 });
+            };
 
-                return { token, email, password, error, isLoading, login, logout, owners, generateCode, newCode, copyCode, toggleOwner }
-            }
-        }).mount('#app')
-    </script>
+            const confirmToggle = (owner) => {
+                modalOwner.value = owner;
+                showModal.value = true;
+            };
+
+            const executeToggle = async () => {
+                if (!modalOwner.value || isToggling.value) return;
+                isToggling.value = true;
+                try {
+                    const res = await fetch(`${API_URL}/admin/owners/${modalOwner.value.id}/toggle`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+                    if (!res.ok) {
+                        const d = await res.json();
+                        throw new Error(d.error || 'Gagal mengubah status');
+                    }
+                    showModal.value = false;
+                    await fetchOwners();
+                } catch (e) {
+                    alert('❌ ' + e.message);
+                } finally {
+                    isToggling.value = false;
+                }
+            };
+
+            onMounted(() => {
+                if (token.value) fetchOwners();
+            });
+
+            return {
+                token, email, password, error, isLoading, isLoadingOwners, isToggling,
+                owners, newCode, copied, showModal, modalOwner, currentView,
+                activeCount, suspendedCount,
+                login, logout, fetchOwners, generateCode, copyCode,
+                confirmToggle, executeToggle, formatDate
+            };
+        }
+    }).mount('#app');
+</script>
 </body>
 </html>

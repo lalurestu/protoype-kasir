@@ -5,7 +5,7 @@ import 'route_names.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/domain/entities/user_role.dart';
 
-// Screens
+// Screens — Flutter app hanya untuk Kasir & Owner
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/owner_dashboard_screen.dart';
@@ -18,7 +18,6 @@ import '../../features/kasir/presentation/screens/pos_checkout_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_report_screen.dart';
 import '../../features/kasir/presentation/screens/printer_settings_screen.dart';
 import '../../features/owner/presentation/screens/owner_report_screen.dart';
-import '../../features/super_admin/presentation/screens/admin_dashboard_screen.dart';
 
 /// Notifier yang jadi jembatan antara Riverpod state dan GoRouter,
 /// sehingga GoRouter TIDAK perlu direcreate setiap auth state berubah.
@@ -39,6 +38,12 @@ class RouterNotifier extends ChangeNotifier {
       return isLoggingIn ? null : '/login';
     }
 
+    // Super Admin tidak boleh masuk Flutter — redirect ke login
+    // Super Admin hanya bisa menggunakan portal Web (admin/index.html)
+    if (authState.role == UserRole.superAdmin) {
+      return '/login';
+    }
+
     // Sudah login tapi akses halaman login -> redirect ke dashboard role-nya
     if (isLoggingIn) {
       return _getRoleDashboard(authState.role);
@@ -50,9 +55,6 @@ class RouterNotifier extends ChangeNotifier {
       return _getRoleDashboard(authState.role);
     }
     if (path.startsWith('/owner') && authState.role != UserRole.owner) {
-      return _getRoleDashboard(authState.role);
-    }
-    if (path.startsWith('/admin') && authState.role != UserRole.superAdmin) {
       return _getRoleDashboard(authState.role);
     }
 
@@ -136,12 +138,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      // Super admin routing
-      GoRoute(
-        path: '/admin',
-        name: RouteNames.adminDashboard,
-        builder: (context, state) => const AdminDashboardScreen(),
-      ),
+      // NOTE: Tidak ada route /admin di Flutter.
+      // Super Admin HANYA dapat menggunakan portal Web: admin/index.html
     ],
   );
 });
@@ -153,7 +151,8 @@ String _getRoleDashboard(UserRole role) {
     case UserRole.owner:
       return '/owner';
     case UserRole.superAdmin:
-      return '/admin';
+      // Super Admin tidak punya dashboard di Flutter — kembali ke login
+      return '/login';
     default:
       return '/login';
   }

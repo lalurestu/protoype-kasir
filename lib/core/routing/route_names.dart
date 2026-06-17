@@ -16,6 +16,7 @@ class RouteNames {
   static const manageStock = 'manage-stock';
   static const manageCustomers = 'manage-customers';
 
-  // Super Admin Routes
-  static const adminDashboard = 'admin-dashboard';
+  // NOTE: Super Admin TIDAK ada di sini.
+  // Super Admin hanya dapat diakses melalui portal Web (admin/index.html).
+  // Flutter app hanya untuk role: Kasir & Owner.
 }

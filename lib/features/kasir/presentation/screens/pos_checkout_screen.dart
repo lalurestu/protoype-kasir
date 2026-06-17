@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/currency_formatter.dart';
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
 import '../providers/discount_provider.dart';
@@ -167,7 +168,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                                       overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Rp ${menu.price.toStringAsFixed(0)}',
+                                    CurrencyFormatter.format(menu.price),
                                     style: TextStyle(
                                         color: isOutOfStock
                                             ? Colors.grey
@@ -268,10 +269,10 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (item.variant != null)
-                              Text('Varian: ${item.variant!.name} (+Rp ${item.variant!.price.toStringAsFixed(0)})', style: const TextStyle(fontSize: 12, color: AppTheme.secondaryColor)),
+                              Text('Varian: ${item.variant!.name} (+${CurrencyFormatter.format(item.variant!.price)})', style: const TextStyle(fontSize: 12, color: AppTheme.secondaryColor)),
                             if (item.addons.isNotEmpty)
-                              Text('Topping: ${item.addons.map((a) => '${a.name} (+Rp ${a.price.toStringAsFixed(0)})').join(', ')}', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                            Text('Rp ${(item.total / item.quantity).toStringAsFixed(0)} x ${item.quantity}'),
+                              Text('Topping: ${item.addons.map((a) => '${a.name} (+${CurrencyFormatter.format(a.price)})').join(', ')}', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                            Text('${CurrencyFormatter.format(item.total / item.quantity)} x ${item.quantity}'),
                           ],
                         ),
                         trailing: Row(
@@ -310,16 +311,16 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               children: [
                 // Price breakdown
                 if (discountAmount > 0 || taxAmount > 0) ...[
-                  _priceRow('Subtotal:', 'Rp ${subtotal.toStringAsFixed(0)}', Colors.white),
+                  _priceRow('Subtotal:', CurrencyFormatter.format(subtotal), Colors.white),
                   if (discountAmount > 0)
                     _priceRow(
                         'Diskon${discount.discountType == DiscountType.percent ? ' (${discount.discountValue.toStringAsFixed(0)}%)' : ''}:',
-                        '- Rp ${discountAmount.toStringAsFixed(0)}',
+                        '- ${CurrencyFormatter.format(discountAmount)}',
                         AppTheme.secondaryColor),
                   if (taxAmount > 0)
                     _priceRow(
                         'Pajak (${discount.taxPercent.toStringAsFixed(0)}%):',
-                        '+ Rp ${taxAmount.toStringAsFixed(0)}',
+                        '+ ${CurrencyFormatter.format(taxAmount)}',
                         Colors.orange),
                   const Divider(color: Colors.white24, height: 16),
                 ],
@@ -328,7 +329,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   children: [
                     const Text('Total:',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text('Rp ${total.toStringAsFixed(0)}',
+                    Text(CurrencyFormatter.format(total),
                         style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -693,7 +694,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-              Text('Subtotal: Rp ${subtotal.toStringAsFixed(0)}',
+              Text('Subtotal: ${CurrencyFormatter.format(subtotal)}',
                   style: const TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 20),
 

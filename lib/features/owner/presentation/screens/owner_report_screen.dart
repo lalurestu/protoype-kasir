@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/currency_formatter.dart';
 
 final reportPeriodProvider = StateProvider<String>((ref) => 'daily');
 
@@ -105,7 +106,7 @@ class OwnerReportScreen extends ConsumerWidget {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text('${det['sub_period_date']}', style: const TextStyle(color: Colors.white, fontSize: 14)),
-                                        Text('Rp ${det['sub_total_revenue']}', style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
+                                        Text(CurrencyFormatter.format((det['sub_total_revenue'] as num? ?? 0).toDouble()), style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
                                       ],
                                     ),
                                   );
@@ -126,7 +127,7 @@ class OwnerReportScreen extends ConsumerWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text('Total Tunai:', style: TextStyle(color: AppTheme.textSecondary)),
-                                Text('Rp ${row['total_cash']}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                Text(CurrencyFormatter.format((row['total_cash'] as num? ?? 0).toDouble()), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -134,7 +135,7 @@ class OwnerReportScreen extends ConsumerWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text('Total QRIS:', style: TextStyle(color: AppTheme.textSecondary)),
-                                Text('Rp ${row['total_qris']}', style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                                Text(CurrencyFormatter.format((row['total_qris'] as num? ?? 0).toDouble()), style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const Divider(color: Colors.white24, height: 24),
@@ -142,7 +143,7 @@ class OwnerReportScreen extends ConsumerWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(selectedPeriod == 'daily' ? 'Total Pendapatan Hari Ini:' : (selectedPeriod == 'monthly' ? 'Total Pendapatan Bulan Ini:' : 'Total Pendapatan Tahun Ini:'), style: const TextStyle(color: Colors.white, fontSize: 16)),
-                                Text('Rp ${row['total_revenue']}', style: const TextStyle(color: AppTheme.primaryColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                                Text(CurrencyFormatter.format((row['total_revenue'] as num? ?? 0).toDouble()), style: const TextStyle(color: AppTheme.primaryColor, fontSize: 18, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ],

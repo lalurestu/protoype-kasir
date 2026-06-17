@@ -1,5 +1,5 @@
 // lib/features/owner/presentation/screens/owner_dashboard_screen.dart
-// UPDATED: Added stock alert, customers stat, manage stock & customers action cards
+// UPDATED: Stock alert, customers stat, analytics charts, CurrencyFormatter
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +8,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/routing/route_names.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/currency_formatter.dart';
 import 'package:open_filex/open_filex.dart';
 import '../../../../core/services/pdf_service.dart';
 import '../../../../core/services/excel_service.dart';
@@ -184,9 +185,28 @@ class OwnerDashboardScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(28.0),
           children: [
-            Text('Ringkasan Bisnis', style: Theme.of(context).textTheme.displayLarge),
-            const SizedBox(height: 8),
-            const Text('Hari ini', style: TextStyle(color: AppTheme.textSecondary)),
+            // Premium greeting header
+            Row(
+              children: [
+                Container(
+                  width: 48, height: 48,
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: AppTheme.primaryColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                  ),
+                  child: const Icon(Icons.store, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Dashboard Pemilik', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 22)),
+                    const Text('Ringkasan bisnis hari ini', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                  ],
+                ),
+              ],
+            ),
             const SizedBox(height: 24),
             statsAsync.when(
               data: (stats) {
@@ -237,14 +257,14 @@ class OwnerDashboardScreen extends ConsumerWidget {
                           return Row(
                             children: [
                               Expanded(child: _buildStatCard(context, 'Penjualan Hari Ini',
-                                  'Rp ${totalSales.toStringAsFixed(0)}',
+                                  CurrencyFormatter.format(totalSales),
                                   Icons.trending_up, AppTheme.secondaryColor)),
                               const SizedBox(width: 16),
                               Expanded(child: _buildStatCard(context, 'Pesanan',
-                                  '$totalOrders', Icons.receipt_long, AppTheme.accentColor)),
+                                  '$totalOrders txn', Icons.receipt_long, AppTheme.accentColor)),
                               const SizedBox(width: 16),
                               Expanded(child: _buildStatCard(context, 'Total Menu',
-                                  '$totalMenus', Icons.restaurant_menu, AppTheme.primaryColor)),
+                                  '$totalMenus item', Icons.restaurant_menu, AppTheme.primaryColor)),
                               const SizedBox(width: 16),
                               Expanded(child: _buildStatCard(context, 'Pelanggan',
                                   '$totalCustomers', Icons.people, Colors.purple)),
@@ -257,15 +277,15 @@ class OwnerDashboardScreen extends ConsumerWidget {
                             physics: const NeverScrollableScrollPhysics(),
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
-                            childAspectRatio: 1.4,
+                            childAspectRatio: 1.35,
                             children: [
                               _buildStatCard(context, 'Penjualan',
-                                  'Rp ${totalSales.toStringAsFixed(0)}',
+                                  CurrencyFormatter.formatCompact(totalSales),
                                   Icons.trending_up, AppTheme.secondaryColor),
                               _buildStatCard(context, 'Pesanan',
-                                  '$totalOrders', Icons.receipt_long, AppTheme.accentColor),
+                                  '$totalOrders txn', Icons.receipt_long, AppTheme.accentColor),
                               _buildStatCard(context, 'Total Menu',
-                                  '$totalMenus', Icons.restaurant_menu, AppTheme.primaryColor),
+                                  '$totalMenus item', Icons.restaurant_menu, AppTheme.primaryColor),
                               _buildStatCard(context, 'Pelanggan',
                                   '$totalCustomers', Icons.people, Colors.purple),
                             ],

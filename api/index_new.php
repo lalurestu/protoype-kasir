@@ -234,48 +234,6 @@ try {
         exit;
 
     // =========================================================================
-    // PASSWORD RESET — Owner submit request
-    // =========================================================================
-    } elseif ($method === 'POST' && $route === '/api/auth/request-password-reset') {
-        $input = json_decode(file_get_contents('php://input'), true);
-        if (empty($input['email']) || empty($input['new_password'])) {
-            http_response_code(400); echo json_encode(['error' => 'Email dan password baru wajib diisi']); exit;
-        }
-        $stmtUser = $pdo->prepare("SELECT id, name, email, role FROM users WHERE email = ? AND role = 'owner' LIMIT 1");
-        $stmtUser->execute([$input['email']]);
-        $owner = $stmtUser->fetch();
-        if (!$owner) {
-            http_response_code(200);
-            echo json_encode(['message' => 'Jika email terdaftar sebagai Owner, permintaan reset akan diproses oleh Super Admin.']);
-            exit;
-        }
-        $stmtPending = $pdo->prepare("SELECT id FROM password_reset_requests WHERE user_id = ? AND status = 'pending' LIMIT 1");
-        $stmtPending->execute([$owner['id']]);
-        if ($stmtPending->fetch()) {
-            http_response_code(200);
-            echo json_encode(['message' => 'Permintaan reset password Anda sedang menunggu persetujuan Super Admin. Mohon bersabar.']);
-            exit;
-        }
-        $reason = $input['reason'] ?? 'Mengubah password';
-        $hashedPassword = password_hash($input['new_password'], PASSWORD_BCRYPT);
-        $pdo->prepare("INSERT INTO password_reset_requests (user_id, email, reason, temp_password, temp_password_plain) VALUES (?, ?, ?, ?, ?)")
-            ->execute([$owner['id'], $owner['email'], $reason, $hashedPassword, 'Diatur oleh Owner']);
-        http_response_code(201);
-        echo json_encode(['message' => 'Permintaan reset password berhasil dikirim ke Super Admin. Anda dapat login setelah disetujui.']);
-        exit;
-
-    } elseif ($method === 'GET' && $route === '/api/auth/reset-request-status') {
-        $email = $_GET['email'] ?? '';
-        if (empty($email)) { http_response_code(400); echo json_encode(['error' => 'email is required']); exit; }
-        $stmt = $pdo->prepare("SELECT prr.status, prr.admin_note, prr.temp_password_plain, prr.created_at, prr.resolved_at FROM password_reset_requests prr JOIN users u ON prr.user_id = u.id WHERE u.email = ? AND u.role = 'owner' ORDER BY prr.created_at DESC LIMIT 1");
-        $stmt->execute([$email]);
-        $req = $stmt->fetch();
-        if (!$req) { http_response_code(404); echo json_encode(['error' => 'Tidak ada permintaan reset']); exit; }
-        if ($req['status'] !== 'approved') $req['temp_password_plain'] = null;
-        echo json_encode($req);
-        exit;
-
-    // =========================================================================
     // MENU ROUTES
     // =========================================================================
 
@@ -1783,16 +1741,71 @@ try {
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
 
         $ownerId = $matches[1];
-        $pdo->prepare("UPDATE users SET is_active = NOT is_active WHERE id = ? AND role = 'owner'")->execute([$ownerId]);
-        echo json_encode(['message' => 'Owner status toggled']); exit;
+
+        // Get current status first
+        $stmtGet = $pdo->prepare("SELECT id, name, email, is_active FROM users WHERE id = ? AND role = 'owner' LIMIT 1");
+        $stmtGet->execute([$ownerId]);
+        $owner = $stmtGet->fetch();
+        if (!$owner) {
+            http_response_code(404); echo json_encode(['error' => 'Owner not found']); exit;
+        }
+
+        $newStatus = !$owner['is_active'];
+        $pdo->prepare("UPDATE users SET is_active = ?, suspended_at = ? WHERE id = ? AND role = 'owner'")
+            ->execute([$newStatus, $newStatus ? null : date('Y-m-d H:i:s'), $ownerId]);
+
+        echo json_encode([
+            'message' => $newStatus ? 'Owner berhasil diaktifkan' : 'Owner berhasil ditangguhkan',
+            'owner_id' => (int)$ownerId,
+            'is_active' => $newStatus,
+        ]);
+        exit;
 
     // =========================================================================
-    // PASSWORD RESET — Admin manage
+    // SUPER ADMIN — GET ALL OWNERS
     // =========================================================================
-    } elseif ($method === 'GET' && $route === '/api/admin/password-reset-requests') {
+    } elseif ($method === 'GET' && $route === '/api/admin/owners') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
-        $statusFilter = $_GET['status'] ?? 'all';
+
+        $stmt = $pdo->query("
+            SELECT u.id, u.name, u.email, u.is_active, u.created_at, u.suspended_at,
+                   COUNT(DISTINCT s.id) as total_stores,
+                   COUNT(DISTINCT k.id) as total_kasir
+            FROM users u
+            LEFT JOIN stores s ON s.owner_id = u.id
+            LEFT JOIN users k ON k.store_id = s.id AND k.role = 'kasir'
+            WHERE u.role = 'owner'
+            GROUP BY u.id
+            ORDER BY u.created_at DESC
+        ");
+        $owners = $stmt->fetchAll();
+
+        foreach ($owners as &$owner) {
+            $owner['id'] = (int)$owner['id'];
+            $owner['is_active'] = (bool)$owner['is_active'];
+            $owner['total_stores'] = (int)$owner['total_stores'];
+            $owner['total_kasir'] = (int)$owner['total_kasir'];
+        }
+
+        http_response_code(200);
+        echo json_encode($owners);
+        exit;
+
+    } else {
+        http_response_code(404);
+        echo json_encode(["error" => "Endpoint not found: $method $route"]);
+        exit;
+    }
+
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode([
+        "error" => "Internal Server Error: " . $e->getMessage()
+    ]);
+    exit;
+}
+GET['status'] ?? 'all';
         $whereClause = ($statusFilter !== 'all') ? "WHERE prr.status = '" . $statusFilter . "'" : '';
         $stmt = $pdo->query("SELECT prr.id, prr.user_id, prr.email, prr.reason, prr.status, prr.admin_note, prr.created_at, prr.resolved_at, u.name as owner_name FROM password_reset_requests prr JOIN users u ON prr.user_id = u.id $whereClause ORDER BY CASE prr.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, prr.created_at DESC LIMIT 100");
         $requests = $stmt->fetchAll();
@@ -1800,7 +1813,7 @@ try {
         echo json_encode($requests);
         exit;
 
-    } elseif ($method === 'POST' && preg_match('/^\/api\/admin\/password-reset-requests\/(\d+)\/(approve|reject)$/ ', $route, $matches)) {
+    } elseif ($method === 'POST' && preg_match('/^\/api\/admin\/password-reset-requests\/(\d+)\/(approve|reject)$/', $route, $matches)) {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
         $requestId = (int)$matches[1];
@@ -1840,6 +1853,61 @@ try {
             echo json_encode(['message' => 'Permintaan berhasil ditolak.']);
             exit;
         }
+
+    // =========================================================================
+    // GLOBAL STATISTICS
+    // =========================================================================
+    } elseif ($method === 'GET' && $route === '/api/admin/stats') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+        $thisMonth = date('Y-m-01');
+        $lastMonth = date('Y-m-01', strtotime('-1 month'));
+        $lastMonthEnd = date('Y-m-t', strtotime('-1 month')) . ' 23:59:59';
+        $s1 = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM transactions WHERE status='completed' AND created_at >= ?"); $s1->execute([$thisMonth]); $revenueThis = (double)$s1->fetchColumn();
+        $s2 = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM transactions WHERE status='completed' AND created_at BETWEEN ? AND ?"); $s2->execute([$lastMonth,$lastMonthEnd]); $revenueLast = (double)$s2->fetchColumn();
+        $totalTx = (int)$pdo->query("SELECT COUNT(*) FROM transactions WHERE status='completed'")->fetchColumn();
+        $s3 = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE status='completed' AND created_at >= ?"); $s3->execute([$thisMonth]); $txThis = (int)$s3->fetchColumn();
+        $ownerStats = $pdo->query("SELECT COUNT(*) as total, SUM(is_active) as active FROM users WHERE role='owner'")->fetch();
+        $totalKasir = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='kasir'")->fetchColumn();
+        $totalMenus = (int)$pdo->query("SELECT COUNT(*) FROM menus")->fetchColumn();
+        $totalCustomers = (int)$pdo->query("SELECT COUNT(*) FROM customers")->fetchColumn();
+        $pendingResets = (int)$pdo->query("SELECT COUNT(*) FROM password_reset_requests WHERE status='pending'")->fetchColumn();
+        $monthlyRevenue = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $mStart = date('Y-m-01', strtotime("-$i months"));
+            $mEnd = date('Y-m-t', strtotime("-$i months")) . ' 23:59:59';
+            $mLabel = date('M Y', strtotime("-$i months"));
+            $sm = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM transactions WHERE status='completed' AND created_at BETWEEN ? AND ?"); $sm->execute([$mStart,$mEnd]);
+            $monthlyRevenue[] = ['month' => $mLabel, 'revenue' => (double)$sm->fetchColumn()];
+        }
+        $topMenus = $pdo->query("SELECT m.name, SUM(ti.quantity) as total_sold, SUM(ti.quantity * ti.price) as total_revenue FROM transaction_items ti JOIN menus m ON ti.menu_id = m.id JOIN transactions t ON ti.transaction_id = t.id WHERE t.status='completed' GROUP BY m.id, m.name ORDER BY total_sold DESC LIMIT 5")->fetchAll();
+        foreach ($topMenus as &$tm) { $tm['total_sold'] = (int)$tm['total_sold']; $tm['total_revenue'] = (double)$tm['total_revenue']; }
+        $topOwners = $pdo->query("SELECT u.name, u.email, COALESCE(SUM(t.total_amount),0) as total_revenue, COUNT(t.id) as total_transactions FROM users u LEFT JOIN stores s ON s.owner_id = u.id LEFT JOIN transactions t ON t.store_id = s.id AND t.status='completed' WHERE u.role='owner' GROUP BY u.id, u.name, u.email ORDER BY total_revenue DESC LIMIT 5")->fetchAll();
+        foreach ($topOwners as &$to) { $to['total_revenue'] = (double)$to['total_revenue']; $to['total_transactions'] = (int)$to['total_transactions']; }
+        echo json_encode(['revenue' => ['this_month' => $revenueThis, 'last_month' => $revenueLast, 'growth_percent' => $revenueLast > 0 ? round((($revenueThis-$revenueLast)/$revenueLast)*100,1) : 0], 'transactions' => ['total' => $totalTx, 'this_month' => $txThis], 'users' => ['total_owners' => (int)$ownerStats['total'], 'active_owners' => (int)$ownerStats['active'], 'suspended_owners' => (int)$ownerStats['total']-(int)$ownerStats['active'], 'total_kasir' => $totalKasir, 'total_customers' => $totalCustomers], 'content' => ['total_menus' => $totalMenus], 'alerts' => ['pending_reset_requests' => $pendingResets], 'charts' => ['monthly_revenue' => $monthlyRevenue, 'top_menus' => $topMenus, 'top_owners' => $topOwners]]);
+        exit;
+
+    // =========================================================================
+    // SYSTEM SETTINGS
+    // =========================================================================
+    } elseif ($method === 'GET' && $route === '/api/admin/settings') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+        $stmt = $pdo->query("SELECT id, code, is_used, created_at FROM verification_codes ORDER BY created_at DESC LIMIT 50");
+        $codes = $stmt->fetchAll();
+        foreach ($codes as &$c) { $c['id'] = (int)$c['id']; $c['is_used'] = (bool)$c['is_used']; }
+        $totalCodes = (int)$pdo->query("SELECT COUNT(*) FROM verification_codes")->fetchColumn();
+        $usedCodes = (int)$pdo->query("SELECT COUNT(*) FROM verification_codes WHERE is_used = 1")->fetchColumn();
+        echo json_encode(['verification_codes' => $codes, 'summary' => ['total_codes' => $totalCodes, 'used_codes' => $usedCodes, 'available_codes' => $totalCodes - $usedCodes]]);
+        exit;
+
+    } elseif ($method === 'DELETE' && preg_match('/^\/api\/admin\/verification-codes\/(\d+)$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+        $codeId = (int)$matches[1];
+        $pdo->prepare("DELETE FROM verification_codes WHERE id = ? AND is_used = 0")->execute([$codeId]);
+        echo json_encode(['message' => 'Kode verifikasi dihapus']);
+        exit;
 
     } else {
         http_response_code(404);

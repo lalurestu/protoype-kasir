@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/local_db_service.dart';
+import '../../../../core/utils/currency_formatter.dart';
 
 final kasirReportProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final dio = ref.watch(dioProvider);
@@ -100,15 +101,15 @@ class KasirReportScreen extends ConsumerWidget {
             children: [
               const Text('Ringkasan Hari Ini', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 24),
-              _buildStatCard('Total Pendapatan', 'Rp $totalRevenue', Icons.account_balance_wallet, AppTheme.secondaryColor),
+              _buildStatCard('Total Pendapatan', CurrencyFormatter.format((totalRevenue as num).toDouble()), Icons.account_balance_wallet, AppTheme.secondaryColor),
               const SizedBox(height: 16),
-              _buildStatCard('Total Transaksi', '$totalTransactions', Icons.receipt_long, Colors.blue),
+              _buildStatCard('Total Transaksi', '$totalTransactions transaksi', Icons.receipt_long, Colors.blue),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _buildSmallStatCard('TUNAI', 'Rp $totalCash', Icons.money, Colors.green)),
+                  Expanded(child: _buildSmallStatCard('TUNAI', CurrencyFormatter.format((totalCash as num).toDouble()), Icons.money, Colors.green)),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildSmallStatCard('QRIS', 'Rp $totalQris', Icons.qr_code, Colors.purple)),
+                  Expanded(child: _buildSmallStatCard('QRIS', CurrencyFormatter.format((totalQris as num).toDouble()), Icons.qr_code, Colors.purple)),
                 ],
               ),
               const SizedBox(height: 40),
@@ -176,7 +177,7 @@ class KasirReportScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               const Text('Total:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              Text('Rp ${tx['total_amount']}', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text(CurrencyFormatter.format((tx['total_amount'] as num).toDouble()), style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
                             ],
                           ),
                         ],
