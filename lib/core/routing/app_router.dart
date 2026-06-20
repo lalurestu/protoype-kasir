@@ -99,6 +99,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             name: RouteNames.printerSettings,
             builder: (context, state) => const PrinterSettingsScreen(),
           ),
+          GoRoute(
+            path: 'manage-customers',
+            name: RouteNames.kasirManageCustomers,
+            builder: (context, state) => const ManageCustomersScreen(),
+          ),
         ],
       ),
       GoRoute(

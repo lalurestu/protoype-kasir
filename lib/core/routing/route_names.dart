@@ -6,6 +6,7 @@ class RouteNames {
   static const kasirReport = 'kasir-report';
   static const posCheckout = 'pos-checkout';
   static const printerSettings = 'printer-settings';
+  static const kasirManageCustomers = 'kasir-manage-customers';
 
   // Owner Routes
   static const ownerDashboard = 'owner-dashboard';

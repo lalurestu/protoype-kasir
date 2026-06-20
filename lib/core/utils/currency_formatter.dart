@@ -15,7 +15,7 @@ class CurrencyFormatter {
 
   static final NumberFormat _fullFormat = NumberFormat.currency(
     locale: 'id_ID',
-    symbol: 'Rp ',
+    symbol: 'Rp. ',
     decimalDigits: 0,
   );
 

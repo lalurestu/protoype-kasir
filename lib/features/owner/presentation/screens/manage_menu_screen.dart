@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../kasir/presentation/providers/menu_provider.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/currency_formatter.dart';
 
 class ManageMenuScreen extends ConsumerStatefulWidget {
   const ManageMenuScreen({super.key});
@@ -77,7 +78,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 4),
-                            Text('Rp ${menu.price}', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold)),
+                            Text(CurrencyFormatter.format(menu.price), style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold)),
                             const SizedBox(height: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

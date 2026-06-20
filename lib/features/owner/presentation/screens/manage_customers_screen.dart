@@ -6,6 +6,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../shared/models/customer_model.dart';
 import '../../../kasir/presentation/providers/customer_provider.dart';
+import '../../../../core/utils/currency_formatter.dart';
 
 class ManageCustomersScreen extends ConsumerStatefulWidget {
   const ManageCustomersScreen({super.key});
@@ -206,7 +207,7 @@ class _ManageCustomersScreenState extends ConsumerState<ManageCustomersScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-                'Total belanja: Rp ${customer.totalSpend.toStringAsFixed(0)}',
+                'Total belanja: ${CurrencyFormatter.format(customer.totalSpend)}',
                 style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
           ],
         ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../shared/models/stock_model.dart';
+import '../../../../core/utils/currency_formatter.dart';
 
 final stockProvider = FutureProvider.autoDispose<List<StockModel>>((ref) async {
   final dio = ref.watch(dioProvider);
@@ -239,7 +240,7 @@ class _ManageStockScreenState extends ConsumerState<ManageStockScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Rp ${stock.menuPrice.toStringAsFixed(0)}',
+                            CurrencyFormatter.format(stock.menuPrice),
                             style: const TextStyle(
                                 color: AppTheme.textSecondary, fontSize: 12),
                           ),

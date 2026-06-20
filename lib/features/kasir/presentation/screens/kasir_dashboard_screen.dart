@@ -533,6 +533,18 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen>
                     ),
                     const SizedBox(height: 12),
 
+                    // Data Pelanggan
+                    _buildActionCard(
+                      title: 'Data Pelanggan',
+                      subtitle: 'Pendaftaran member dan histori belanja',
+                      icon: Icons.people_outline,
+                      color: AppTheme.surfaceDark,
+                      borderColor: Colors.purple.withOpacity(0.3),
+                      iconColor: Colors.purple,
+                      onTap: () => context.goNamed(RouteNames.kasirManageCustomers),
+                    ),
+                    const SizedBox(height: 12),
+
                     // Sinkronisasi Offline
                     _buildActionCard(
                       title: _isSyncing ? 'Menyinkronkan...' : 'Sinkronisasi Offline',

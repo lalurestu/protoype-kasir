@@ -21,6 +21,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _passCtrl = TextEditingController();
   bool _isLoading = false;
   String? _errorMsg;
+  bool _obscurePassword = true;
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -157,7 +158,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               controller: _passCtrl,
                               label: 'Kata Sandi',
                               icon: Icons.lock_outline,
-                              obscureText: true,
+                              obscureText: _obscurePassword,
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                  color: AppTheme.textSecondary,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
                               onSubmitted: (_) => _isLoading ? null : _handleLogin(),
                             ),
                             const SizedBox(height: 12),
@@ -252,6 +265,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     TextInputType? keyboardType,
     bool obscureText = false,
     ValueChanged<String>? onSubmitted,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -263,6 +277,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         labelText: label,
         labelStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
         prefixIcon: Icon(icon, color: AppTheme.textSecondary, size: 20),
+        suffixIcon: suffixIcon,
         filled: true,
         fillColor: Colors.white.withOpacity(0.04),
         enabledBorder: OutlineInputBorder(

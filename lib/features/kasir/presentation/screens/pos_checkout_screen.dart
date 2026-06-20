@@ -343,7 +343,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                       child: OutlinedButton(
                         onPressed: (cartItems.isEmpty || _isProcessing)
                             ? null
-                            : () => _showSaveBillDialog(context, subtotal, discountAmount, taxAmount, total, discount),
+                            : () => _checkMemberAndProceed(() => _showSaveBillDialog(context, subtotal, discountAmount, taxAmount, total, discount)),
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: cartItems.isEmpty ? Colors.grey : AppTheme.secondaryColor),
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -357,7 +357,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                       child: ElevatedButton(
                         onPressed: (cartItems.isEmpty || _isProcessing)
                             ? null
-                            : () => _showPaymentDialog(context, subtotal, discountAmount, taxAmount, total, discount),
+                            : () => _checkMemberAndProceed(() => _showPaymentDialog(context, subtotal, discountAmount, taxAmount, total, discount)),
                         style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                         child: _isProcessing
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -506,6 +506,48 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
   // ──────────────────────────────────────────────────────────
   // DIALOGS
   // ──────────────────────────────────────────────────────────
+
+  void _checkMemberAndProceed(VoidCallback onProceed) {
+    final selectedCustomer = ref.read(selectedCustomerProvider);
+    if (selectedCustomer != null) {
+      onProceed();
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceDark,
+        title: const Row(
+          children: [
+            Icon(Icons.card_membership, color: AppTheme.primaryColor),
+            SizedBox(width: 8),
+            Text('Data Pelanggan', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: const Text(
+            'Pelanggan belum dipilih. Apakah pelanggan memiliki nomor member untuk pengumpulan poin?',
+            style: TextStyle(color: AppTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onProceed();
+            },
+            child: const Text('Lewati (Guest)', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondaryColor),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showCustomerSearchDialog();
+            },
+            child: const Text('Cari / Daftar Member'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showCustomerSearchDialog() {
     final phoneCtrl = TextEditingController();
@@ -819,19 +861,19 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (discountAmount > 0 || taxAmount > 0) ...[
-              _priceRow('Subtotal:', 'Rp ${subtotal.toStringAsFixed(0)}', Colors.white),
+              _priceRow('Subtotal:', CurrencyFormatter.format(subtotal), Colors.white),
               if (discountAmount > 0)
-                _priceRow('Diskon:', '- Rp ${discountAmount.toStringAsFixed(0)}',
+                _priceRow('Diskon:', '- ${CurrencyFormatter.format(discountAmount)}',
                     AppTheme.secondaryColor),
               if (taxAmount > 0)
-                _priceRow('Pajak:', '+ Rp ${taxAmount.toStringAsFixed(0)}', Colors.orange),
+                _priceRow('Pajak:', '+ ${CurrencyFormatter.format(taxAmount)}', Colors.orange),
               const Divider(color: Colors.white24, height: 16),
             ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('TOTAL:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                Text('Rp ${total.toStringAsFixed(0)}',
+                Text(CurrencyFormatter.format(total),
                     style: const TextStyle(
                         color: AppTheme.secondaryColor,
                         fontWeight: FontWeight.bold,
@@ -1064,7 +1106,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text('Rp $total', style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Text(CurrencyFormatter.format(total), style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
                                     const SizedBox(height: 8),
                                     Row(
                                       children: [
@@ -1113,7 +1155,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
           children: [
             Text('Tagihan Meja ${bill['table_number'] ?? '-'}', style: const TextStyle(color: AppTheme.textSecondary)),
             const SizedBox(height: 8),
-            Text('Rp ${bill['total_amount']}', style: const TextStyle(color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
+            Text(CurrencyFormatter.format(bill['total_amount'] ?? 0), style: const TextStyle(color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
@@ -1133,7 +1175,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               label: const Text('Bayar QRIS'),
               onPressed: () {
                 Navigator.pop(ctx);
-                _paySavedBill(bill['id'], 'qris');
+                _processMidtransQrisForSavedBill(bill);
               },
             ),
           ],
@@ -1163,6 +1205,111 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     }
   }
 
+  Future<void> _processMidtransQrisForSavedBill(Map<String, dynamic> bill) async {
+    setState(() => _isProcessing = true);
+    final dio = ref.read(dioProvider);
+    final double totalAmount = double.tryParse(bill['total_amount'].toString()) ?? 0.0;
+    try {
+      final res = await dio.post('/qris/generate', data: {'total_amount': totalAmount});
+      if (res.data != null && res.data['qr_url'] != null) {
+        final orderId = res.data['order_id'];
+        final qrUrl = res.data['qr_url'];
+        final qrString = res.data['qr_string'] ?? '';
+        if (mounted) {
+          _showQrisDialogForSavedBill(context, bill, orderId, qrUrl, qrString, totalAmount);
+        }
+      } else {
+        throw Exception('Gagal mendapatkan QR dari Midtrans');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Gagal: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  void _showQrisDialogForSavedBill(BuildContext context, Map<String, dynamic> bill, String orderId, String qrUrl, String qrString, double totalAmount) {
+    bool isChecking = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppTheme.surfaceDark,
+          title: const Text('Scan QRIS', style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(CurrencyFormatter.format(totalAmount),
+                  style: const TextStyle(
+                      color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                child: Image.network(qrUrl, width: 230, height: 230, fit: BoxFit.contain,
+                    errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 100)),
+              ),
+              const SizedBox(height: 16),
+              const Text('Minta pelanggan scan QR di atas.',
+                  style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
+              if (qrString.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SelectableText(qrString,
+                    style: const TextStyle(color: Colors.grey, fontSize: 10),
+                    textAlign: TextAlign.center),
+              ],
+              const SizedBox(height: 20),
+              if (isChecking)
+                const CircularProgressIndicator()
+              else
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.secondaryColor,
+                      minimumSize: const Size(double.infinity, 48)),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Cek Status Pembayaran'),
+                  onPressed: () async {
+                    setDialogState(() => isChecking = true);
+                    try {
+                      final res = await ref.read(dioProvider).get('/qris/status/$orderId');
+                      final status = res.data['status'];
+                      if (status == 'settlement' || status == 'capture') {
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        _paySavedBill(bill['id'], 'qris');
+                      } else {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(content: Text('Status: $status. Pelanggan belum membayar.')));
+                        }
+                      }
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('Gagal cek status: $e')));
+                      }
+                    } finally {
+                      if (ctx.mounted) setDialogState(() => isChecking = false);
+                    }
+                  },
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isChecking ? null : () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: AppTheme.error)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _cancelSavedBill(int id, BuildContext ctxDialog) async {
     try {
       await ref.read(dioProvider).delete('/checkout/$id');
@@ -1190,7 +1337,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Rp ${totalAmount.toStringAsFixed(0)}',
+              Text(CurrencyFormatter.format(totalAmount),
                   style: const TextStyle(
                       color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
@@ -1414,7 +1561,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: menu.variants!.map((v) => ChoiceChip(
-                    label: Text('${v.name} (+Rp ${v.price.toStringAsFixed(0)})', style: TextStyle(color: selectedVariant == v ? Colors.white : AppTheme.textSecondary)),
+                    label: Text('${v.name} (+${CurrencyFormatter.format(v.price)})', style: TextStyle(color: selectedVariant == v ? Colors.white : AppTheme.textSecondary)),
                     selected: selectedVariant == v,
                     selectedColor: AppTheme.primaryColor,
                     backgroundColor: AppTheme.backgroundDark,
@@ -1435,7 +1582,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   children: menu.addons!.map((a) {
                     final isSelected = selectedAddons.contains(a);
                     return FilterChip(
-                      label: Text('${a.name} (+Rp ${a.price.toStringAsFixed(0)})', style: TextStyle(color: isSelected ? Colors.white : AppTheme.textSecondary)),
+                      label: Text('${a.name} (+${CurrencyFormatter.format(a.price)})', style: TextStyle(color: isSelected ? Colors.white : AppTheme.textSecondary)),
                       selected: isSelected,
                       selectedColor: AppTheme.secondaryColor,
                       backgroundColor: AppTheme.backgroundDark,

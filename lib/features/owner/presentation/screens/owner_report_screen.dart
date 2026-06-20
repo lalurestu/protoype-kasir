@@ -95,7 +95,7 @@ class OwnerReportScreen extends ConsumerWidget {
                                           child: Text(itemsStr.isEmpty ? 'Pesanan Custom' : itemsStr, style: const TextStyle(color: Colors.white, fontSize: 14)),
                                         ),
                                         const SizedBox(width: 8),
-                                        Text('Rp ${det['total_amount']}', style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
+                                        Text(CurrencyFormatter.format((det['total_amount'] as num? ?? 0).toDouble()), style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
                                       ],
                                     ),
                                   );

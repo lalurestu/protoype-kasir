@@ -12,13 +12,13 @@ String _getBaseUrl() {
   if (Platform.isAndroid) {
     // 10.0.2.2 is the special alias for your host machine's localhost in the Android Emulator.
     // If you are testing on a PHYSICAL Android device, you must change this to your computer's actual Wi-Fi IP (e.g., 192.168.1.X)
-    return 'http://10.107.243.54/protoype-kasir/api';
+    return 'http://192.168.110.202/protoype-kasir/api';
   } else if (Platform.isIOS) {
     // iOS simulator uses localhost directly
     return 'http://localhost/protoype-kasir/api';
   }
   // Fallback for physical devices or other platforms. Make sure this is your PC's current IP address.
-  return 'http://10.107.243.54/protoype-kasir/api';
+  return 'http://192.168.110.202/protoype-kasir/api';
 }
 
 final dioProvider = Provider<Dio>((ref) {
