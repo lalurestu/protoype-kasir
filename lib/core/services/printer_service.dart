@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'local_db_service.dart';
 
 // Note: Using print_bluetooth_thermal package (works on Android & iOS)
 // Add to pubspec.yaml: print_bluetooth_thermal: ^1.0.7
@@ -11,11 +12,14 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 // For now, this provides a stub implementation that shows a preview
 // To activate real Bluetooth printing, install the package and uncomment the real code
 
-final printerServiceProvider = Provider<PrinterService>((ref) => PrinterService());
+final printerServiceProvider = Provider<PrinterService>((ref) => PrinterService(ref.read(localDbProvider)));
 
 class PrinterService {
+  final LocalDbService _localDb;
   bool _isConnected = false;
   String _connectedDevice = '';
+
+  PrinterService(this._localDb);
 
   bool get isConnected => _isConnected;
   String get connectedDeviceName => _connectedDevice;
@@ -84,12 +88,28 @@ class PrinterService {
   }
 
   List<String> _buildReceiptLines(Map<String, dynamic> tx) {
+    final storeSettings = _localDb.getStoreSettings();
+    final storeName = storeSettings['name'] ?? 'TOKO KASIR';
+    final storeAddress = storeSettings['address'] ?? '';
+    final storePhone = storeSettings['phone'] ?? '';
+
     final lines = <String>[];
     final divider = '--------------------------------';
     final now = DateTime.now();
 
     lines.add('');
-    lines.add(_center('TOKO KASIR'));
+    lines.add(_center(storeName.toUpperCase()));
+    if (storeAddress.isNotEmpty) {
+      // Simple word wrap for address to max 32 chars
+      if (storeAddress.length <= 32) {
+        lines.add(_center(storeAddress));
+      } else {
+        lines.add(_center(storeAddress.substring(0, 32)));
+      }
+    }
+    if (storePhone.isNotEmpty) {
+      lines.add(_center(storePhone));
+    }
     lines.add(_center('Struk Pembayaran'));
     lines.add(divider);
     lines.add('Tgl : ${now.day}/${now.month}/${now.year} ${now.hour}:${_pad(now.minute)}');
@@ -114,6 +134,9 @@ class PrinterService {
       lines.add(_rightAlign('Subtotal', 'Rp ${_formatRp((tx['subtotal_amount'] ?? tx['total_amount']))}'));
       lines.add(_rightAlign('Diskon', '- Rp ${_formatRp(tx['discount_amount'])}'));
     }
+    if ((tx['service_amount'] ?? 0) > 0) {
+      lines.add(_rightAlign('Service Charge', '+ Rp ${_formatRp(tx['service_amount'])}'));
+    }
     if ((tx['tax_amount'] ?? 0) > 0) {
       lines.add(_rightAlign('Pajak', '+ Rp ${_formatRp(tx['tax_amount'])}'));
     }
@@ -123,6 +146,8 @@ class PrinterService {
     lines.add(divider);
     lines.add(_center('Terima Kasih!'));
     lines.add(_center('Kunjungi kami lagi :)'));
+    lines.add(divider);
+    lines.add(_center('Powered by SELLORA'));
     lines.add('');
     lines.add('');
 

@@ -25,12 +25,12 @@ class CartItem {
 class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super([]);
 
-  void addItem(MenuModel menu, {MenuVariant? variant, List<MenuAddon> addons = const []}) {
-    final newItem = CartItem(menu: menu, variant: variant, addons: addons);
+  void addItem(MenuModel menu, {MenuVariant? variant, List<MenuAddon> addons = const [], int quantity = 1}) {
+    final newItem = CartItem(menu: menu, variant: variant, addons: addons, quantity: quantity);
     final index = state.indexWhere((item) => item.id == newItem.id);
     if (index >= 0) {
       final updatedList = List<CartItem>.from(state);
-      updatedList[index].quantity++;
+      updatedList[index].quantity += quantity;
       state = updatedList;
     } else {
       state = [...state, newItem];

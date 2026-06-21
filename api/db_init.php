@@ -110,7 +110,7 @@ try {
         `user_id` INT NOT NULL,
         `token` VARCHAR(255) NOT NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        `expires_at` TIMESTAMP NOT NULL,
+        `expires_at` DATETIME NOT NULL,
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB;");
     echo "Created table `user_tokens`.\n";

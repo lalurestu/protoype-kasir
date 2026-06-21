@@ -12,15 +12,29 @@ final secureStorageProvider = Provider<SecureStorage>((ref) {
 
 class AuthState {
   final bool isAuthenticated;
+  final bool isPinVerified;
   final UserRole role;
 
   AuthState({
     required this.isAuthenticated,
+    required this.isPinVerified,
     required this.role,
   });
 
   factory AuthState.initial() {
-    return AuthState(isAuthenticated: false, role: UserRole.guest);
+    return AuthState(isAuthenticated: false, isPinVerified: false, role: UserRole.guest);
+  }
+
+  AuthState copyWith({
+    bool? isAuthenticated,
+    bool? isPinVerified,
+    UserRole? role,
+  }) {
+    return AuthState(
+      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      isPinVerified: isPinVerified ?? this.isPinVerified,
+      role: role ?? this.role,
+    );
   }
 }
 
@@ -39,7 +53,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         final response = await _dio.get('/auth/me');
         final roleStr = response.data['role'] as String;
         final role = _parseRole(roleStr);
-        state = AuthState(isAuthenticated: true, role: role);
+        state = AuthState(isAuthenticated: true, isPinVerified: false, role: role);
       } catch (e) {
         await logout();
       }
@@ -66,7 +80,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final roleStr = response.data['user']['role'];
       
       await _storage.saveToken(token);
-      state = AuthState(isAuthenticated: true, role: _parseRole(roleStr));
+      state = AuthState(isAuthenticated: true, isPinVerified: false, role: _parseRole(roleStr));
     } on DioException catch (e) {
       throw Exception('DioError: ${e.message} | Response: ${e.response?.data}');
     } catch (e) {
@@ -80,6 +94,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (_) {}
     await _storage.deleteToken();
     state = AuthState.initial();
+  }
+
+  void verifyPin() {
+    state = state.copyWith(isPinVerified: true);
   }
 }
 

@@ -12,6 +12,7 @@ import '../../../../core/utils/currency_formatter.dart';
 import 'package:open_filex/open_filex.dart';
 import '../../../../core/services/pdf_service.dart';
 import '../../../../core/services/excel_service.dart';
+import '../../../../core/services/local_db_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 final ownerDashboardStatsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -26,8 +27,44 @@ final ownerAnalyticsProvider = FutureProvider.autoDispose<Map<String, dynamic>>(
   return response.data;
 });
 
-class OwnerDashboardScreen extends ConsumerWidget {
+class OwnerDashboardScreen extends ConsumerStatefulWidget {
   const OwnerDashboardScreen({super.key});
+
+  @override
+  ConsumerState<OwnerDashboardScreen> createState() => _OwnerDashboardScreenState();
+}
+
+class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
+  List<Map<String, dynamic>> _branches = [];
+  int _activeBranchId = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBranches();
+  }
+
+  void _loadBranches() {
+    final localDb = ref.read(localDbProvider);
+    setState(() {
+      _branches = localDb.getBranches();
+      _activeBranchId = localDb.getActiveBranch();
+    });
+  }
+
+  void _changeBranch(int? newId) {
+    if (newId != null && newId != _activeBranchId) {
+      ref.read(localDbProvider).setActiveBranch(newId);
+      setState(() {
+        _activeBranchId = newId;
+      });
+      ref.invalidate(ownerDashboardStatsProvider);
+      ref.invalidate(ownerAnalyticsProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Berpindah ke Cabang ID: $newId')),
+      );
+    }
+  }
 
   void _showExportOptions(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
@@ -127,12 +164,40 @@ class OwnerDashboardScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final statsAsync = ref.watch(ownerDashboardStatsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Pemilik', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Row(
+          children: [
+            const Text('Dashboard Pemilik', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.primaryColor),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _activeBranchId,
+                  dropdownColor: AppTheme.surfaceDark,
+                  icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primaryColor),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  items: _branches.map((b) {
+                    return DropdownMenuItem<int>(
+                      value: b['id'] as int,
+                      child: Text(b['name'] as String),
+                    );
+                  }).toList(),
+                  onChanged: _changeBranch,
+                ),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppTheme.surfaceDark,
         actions: [
           IconButton(
@@ -242,7 +307,97 @@ class OwnerDashboardScreen extends ConsumerWidget {
                               ),
                             ),
                             TextButton(
-                              onPressed: () => context.goNamed(RouteNames.manageStock),
+                              onPressed: () => context.goNamed(RouteNames.ownerLowStockAlert),
+                              child: const Text('Lihat',
+                                  style: TextStyle(color: Colors.orange)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                    // License/Maintenance Alert
+                    Builder(
+                      builder: (context) {
+                        final license = ref.read(localDbProvider).getLicenseInfo();
+                        bool showLicenseWarning = false;
+                        String licenseMsg = '';
+                        bool isExpired = false;
+
+                        if (license == null) {
+                          showLicenseWarning = true;
+                          isExpired = true;
+                          licenseMsg = 'Aplikasi Belum Diaktivasi. Fitur sinkronisasi cloud dinonaktifkan.';
+                        } else {
+                          final expiry = DateTime.tryParse(license['expiry_date'] ?? '');
+                          if (expiry != null) {
+                            final daysLeft = expiry.difference(DateTime.now()).inDays;
+                            if (daysLeft <= 0) {
+                              showLicenseWarning = true;
+                              isExpired = true;
+                              licenseMsg = 'Masa Maintenance Kadaluarsa. Harap perpanjang lisensi Anda.';
+                            } else if (daysLeft <= 30) {
+                              showLicenseWarning = true;
+                              licenseMsg = 'Maintenance kedaluwarsa dalam $daysLeft hari.';
+                            }
+                          }
+                        }
+
+                        if (!showLicenseWarning) return const SizedBox.shrink();
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 20),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isExpired ? Colors.red.withOpacity(0.1) : Colors.amber.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isExpired ? Colors.red.withOpacity(0.4) : Colors.amber.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(isExpired ? Icons.gpp_bad : Icons.gpp_maybe,
+                                  color: isExpired ? Colors.red : Colors.amber, size: 24),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  licenseMsg,
+                                  style: TextStyle(
+                                      color: isExpired ? Colors.redAccent : Colors.amber, 
+                                      fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => context.goNamed(RouteNames.ownerLicense),
+                                child: Text('Aktivasi',
+                                    style: TextStyle(color: isExpired ? Colors.redAccent : Colors.amber)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    ),
+                    if (lowStockCount > 0)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded,
+                                color: Colors.orange, size: 24),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '$lowStockCount item stok menipis! Segera cek manajemen stok.',
+                                style: const TextStyle(
+                                    color: Colors.orange, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => context.goNamed(RouteNames.ownerLowStockAlert),
                               child: const Text('Lihat',
                                   style: TextStyle(color: Colors.orange)),
                             ),
@@ -260,14 +415,15 @@ class OwnerDashboardScreen extends ConsumerWidget {
                                   CurrencyFormatter.format(totalSales),
                                   Icons.trending_up, AppTheme.secondaryColor)),
                               const SizedBox(width: 16),
+                              Expanded(child: _buildStatCard(context, 'Laba Bersih (Estimasi)',
+                                  CurrencyFormatter.format(totalSales * 0.4), // Mock profit 40%
+                                  Icons.account_balance_wallet, Colors.greenAccent)),
+                              const SizedBox(width: 16),
                               Expanded(child: _buildStatCard(context, 'Pesanan',
                                   '$totalOrders txn', Icons.receipt_long, AppTheme.accentColor)),
                               const SizedBox(width: 16),
                               Expanded(child: _buildStatCard(context, 'Total Menu',
                                   '$totalMenus item', Icons.restaurant_menu, AppTheme.primaryColor)),
-                              const SizedBox(width: 16),
-                              Expanded(child: _buildStatCard(context, 'Pelanggan',
-                                  '$totalCustomers', Icons.people, Colors.purple)),
                             ],
                           );
                         } else {
@@ -282,12 +438,13 @@ class OwnerDashboardScreen extends ConsumerWidget {
                               _buildStatCard(context, 'Penjualan',
                                   CurrencyFormatter.formatCompact(totalSales),
                                   Icons.trending_up, AppTheme.secondaryColor),
+                              _buildStatCard(context, 'Laba Bersih',
+                                  CurrencyFormatter.formatCompact(totalSales * 0.4), // Mock profit 40%
+                                  Icons.account_balance_wallet, Colors.greenAccent),
                               _buildStatCard(context, 'Pesanan',
                                   '$totalOrders txn', Icons.receipt_long, AppTheme.accentColor),
                               _buildStatCard(context, 'Total Menu',
                                   '$totalMenus item', Icons.restaurant_menu, AppTheme.primaryColor),
-                              _buildStatCard(context, 'Pelanggan',
-                                  '$totalCustomers', Icons.people, Colors.purple),
                             ],
                           );
                         }
@@ -356,6 +513,15 @@ class OwnerDashboardScreen extends ConsumerWidget {
       _buildActionCard(context, 'Riwayat Shift', 'Lihat rekap shift kasir',
           Icons.schedule, () => context.goNamed(RouteNames.ownerShifts),
           accentColor: Colors.indigo),
+      _buildActionCard(context, 'Pengaturan Toko', 'Profil & Identitas Toko',
+          Icons.storefront, () => context.goNamed(RouteNames.storeSettings),
+          accentColor: Colors.orange),
+      _buildActionCard(context, 'Promo & Diskon', 'Atur potongan harga',
+          Icons.local_offer, () => context.goNamed(RouteNames.managePromo),
+          accentColor: Colors.pink),
+      _buildActionCard(context, 'Pajak & Layanan', 'Atur PPN / PB1 / SC',
+          Icons.receipt, () => context.goNamed(RouteNames.ownerTaxService),
+          accentColor: Colors.deepOrange),
     ];
   }
 

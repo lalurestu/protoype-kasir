@@ -19,6 +19,9 @@ class MenuModel {
   final int? stock;
   @JsonKey(name: 'min_stock')
   final int? minStock;
+  
+  // Harga Modal (COGS)
+  final double? cogs;
 
   final List<MenuVariant>? variants;
   final List<MenuAddon>? addons;
@@ -34,6 +37,7 @@ class MenuModel {
     this.isAvailable = true,
     this.stock,
     this.minStock,
+    this.cogs,
     this.variants,
     this.addons,
   });

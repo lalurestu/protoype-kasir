@@ -16,6 +16,12 @@ class RouteNames {
   static const manageKasir = 'manage-kasir';
   static const manageStock = 'manage-stock';
   static const manageCustomers = 'manage-customers';
+  static const storeSettings = 'store-settings';
+  static const managePromo = 'manage-promo';
+  static const kasirExpense = 'kasir-expense';
+  static const ownerTaxService = 'owner-tax-service';
+  static const ownerLowStockAlert = 'owner-low-stock-alert';
+  static const ownerLicense = 'owner-license';
 
   // NOTE: Super Admin TIDAK ada di sini.
   // Super Admin hanya dapat diakses melalui portal Web (admin/index.html).

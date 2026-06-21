@@ -7,6 +7,7 @@ import '../../features/auth/domain/entities/user_role.dart';
 
 // Screens — Flutter app hanya untuk Kasir & Owner
 import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/screens/pin_lock_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/owner_dashboard_screen.dart';
 import '../../features/owner/presentation/screens/manage_menu_screen.dart';
@@ -17,7 +18,13 @@ import '../../features/owner/presentation/screens/owner_shifts_screen.dart';
 import '../../features/kasir/presentation/screens/pos_checkout_screen.dart';
 import '../../features/kasir/presentation/screens/kasir_report_screen.dart';
 import '../../features/kasir/presentation/screens/printer_settings_screen.dart';
+import '../../features/kasir/presentation/screens/kasir_expense_screen.dart';
 import '../../features/owner/presentation/screens/owner_report_screen.dart';
+import '../../features/owner/presentation/screens/owner_store_settings_screen.dart';
+import '../../features/owner/presentation/screens/manage_promo_screen.dart';
+import '../../features/owner/presentation/screens/owner_tax_service_screen.dart';
+import '../../features/owner/presentation/screens/owner_low_stock_screen.dart';
+import '../../features/owner/presentation/screens/owner_license_screen.dart';
 
 /// Notifier yang jadi jembatan antara Riverpod state dan GoRouter,
 /// sehingga GoRouter TIDAK perlu direcreate setiap auth state berubah.
@@ -38,15 +45,20 @@ class RouterNotifier extends ChangeNotifier {
       return isLoggingIn ? null : '/login';
     }
 
+    // Sudah login tapi PIN belum diverifikasi -> paksa ke pin-lock
+    if (!authState.isPinVerified) {
+      return state.uri.path == '/pin-lock' ? null : '/pin-lock';
+    }
+
+    // Jika sudah verifikasi PIN tapi mencoba akses /login atau /pin-lock -> arahkan ke dashboard
+    if (isLoggingIn || state.uri.path == '/pin-lock') {
+      return _getRoleDashboard(authState.role);
+    }
+
     // Super Admin tidak boleh masuk Flutter — redirect ke login
     // Super Admin hanya bisa menggunakan portal Web (admin/index.html)
     if (authState.role == UserRole.superAdmin) {
       return '/login';
-    }
-
-    // Sudah login tapi akses halaman login -> redirect ke dashboard role-nya
-    if (isLoggingIn) {
-      return _getRoleDashboard(authState.role);
     }
 
     // Guard per role
@@ -80,6 +92,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
+        path: '/pin-lock',
+        builder: (context, state) => const PinLockScreen(),
+      ),
+      GoRoute(
         path: '/kasir',
         name: RouteNames.kasirDashboard,
         builder: (context, state) => const KasirDashboardScreen(),
@@ -95,9 +111,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const KasirReportScreen(),
           ),
           GoRoute(
-            path: 'printer',
+            path: 'printer-settings',
             name: RouteNames.printerSettings,
             builder: (context, state) => const PrinterSettingsScreen(),
+          ),
+          GoRoute(
+            path: 'expense',
+            name: RouteNames.kasirExpense,
+            builder: (context, state) => const KasirExpenseScreen(),
           ),
           GoRoute(
             path: 'manage-customers',
@@ -140,6 +161,31 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             path: 'report',
             name: RouteNames.ownerReport,
             builder: (context, state) => const OwnerReportScreen(),
+          ),
+          GoRoute(
+            path: 'store-settings',
+            name: RouteNames.storeSettings,
+            builder: (context, state) => const OwnerStoreSettingsScreen(),
+          ),
+          GoRoute(
+            path: 'manage-promo',
+            name: RouteNames.managePromo,
+            builder: (context, state) => const ManagePromoScreen(),
+          ),
+          GoRoute(
+            path: 'tax-service',
+            name: RouteNames.ownerTaxService,
+            builder: (context, state) => const OwnerTaxServiceScreen(),
+          ),
+          GoRoute(
+            path: 'low-stock-alert',
+            name: RouteNames.ownerLowStockAlert,
+            builder: (context, state) => const OwnerLowStockScreen(),
+          ),
+          GoRoute(
+            path: 'license',
+            name: RouteNames.ownerLicense,
+            builder: (context, state) => const OwnerLicenseScreen(),
           ),
         ],
       ),

@@ -30,11 +30,22 @@ final kasirReportProvider = FutureProvider.autoDispose<Map<String, dynamic>>((re
   // Gabung sama transaksi offline yang belom sinkron
   final pendingList = localDb.getPendingTransactions();
   
+  // Ambil data pengeluaran lokal hari ini
+  final expensesList = localDb.getExpenses();
+  final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+  
   int localCount = 0;
   double localRev = 0.0;
   double localCash = 0.0;
   double localQris = 0.0;
+  double totalExpense = 0.0;
   List<dynamic> localRecent = [];
+
+  for (var e in expensesList) {
+    if (e['date'].toString().startsWith(todayStr)) {
+      totalExpense += (e['amount'] as num).toDouble();
+    }
+  }
 
   for (var tx in pendingList.reversed) {
     localCount++;
@@ -61,6 +72,7 @@ final kasirReportProvider = FutureProvider.autoDispose<Map<String, dynamic>>((re
     'total_revenue': ((serverData['total_revenue'] ?? 0.0) as num).toDouble() + localRev,
     'total_cash': ((serverData['total_cash'] ?? 0.0) as num).toDouble() + localCash,
     'total_qris': ((serverData['total_qris'] ?? 0.0) as num).toDouble() + localQris,
+    'total_expense': totalExpense,
     'recent_transactions': [
       ...localRecent,
       ...(serverData['recent_transactions'] as List<dynamic>? ?? [])
@@ -93,6 +105,8 @@ class KasirReportScreen extends ConsumerWidget {
           final totalRevenue = report['total_revenue'] ?? 0.0;
           final totalCash = report['total_cash'] ?? 0.0;
           final totalQris = report['total_qris'] ?? 0.0;
+          final totalExpense = report['total_expense'] ?? 0.0;
+          final netCash = totalCash - totalExpense;
 
           final recentTransactions = report['recent_transactions'] as List<dynamic>? ?? [];
 
@@ -107,9 +121,17 @@ class KasirReportScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _buildSmallStatCard('TUNAI', CurrencyFormatter.format((totalCash as num).toDouble()), Icons.money, Colors.green)),
+                  Expanded(child: _buildSmallStatCard('TUNAI MASUK', CurrencyFormatter.format((totalCash as num).toDouble()), Icons.money, Colors.green)),
                   const SizedBox(width: 16),
                   Expanded(child: _buildSmallStatCard('QRIS', CurrencyFormatter.format((totalQris as num).toDouble()), Icons.qr_code, Colors.purple)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: _buildSmallStatCard('PENGELUARAN', CurrencyFormatter.format((totalExpense as num).toDouble()), Icons.money_off, Colors.redAccent)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildSmallStatCard('KAS BERSIH', CurrencyFormatter.format((netCash as num).toDouble()), Icons.savings, Colors.amber)),
                 ],
               ),
               const SizedBox(height: 40),

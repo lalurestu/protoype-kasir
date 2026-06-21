@@ -11,6 +11,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/services/local_db_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/services/notification_service.dart';
 import '../providers/shift_provider.dart';
 import '../../../../shared/models/shift_model.dart';
 
@@ -267,7 +268,13 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen>
                                 .read(shiftNotifierProvider.notifier)
                                 .closeShift(shift.id, closingCash, noteCtrl.text);
                             if (ctx.mounted) Navigator.pop(ctx);
-                            if (mounted) _showShiftSummaryAlert(closedShift);
+                            if (mounted) {
+                              _showShiftSummaryAlert(closedShift);
+                              ref.read(notificationServiceProvider).showNotification(
+                                title: 'Shift Ditutup',
+                                body: 'Kasir telah menutup shift. Kas akhir: ${CurrencyFormatter.format(closedShift.closingCash ?? 0)}',
+                              );
+                            }
                           } catch (e) {
                             if (mounted) _showSnackBar('Gagal tutup shift: $e', isError: true);
                           } finally {
@@ -542,6 +549,25 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen>
                       borderColor: Colors.purple.withOpacity(0.3),
                       iconColor: Colors.purple,
                       onTap: () => context.goNamed(RouteNames.kasirManageCustomers),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Pengeluaran Kasir
+                    _buildActionCard(
+                      title: 'Catat Pengeluaran',
+                      subtitle: 'Petty cash dan pengeluaran operasional',
+                      icon: Icons.money_off,
+                      color: AppTheme.surfaceDark,
+                      borderColor: Colors.redAccent.withOpacity(0.3),
+                      iconColor: Colors.redAccent,
+                      onTap: () {
+                        final shift = shiftState.valueOrNull;
+                        if (shift == null || !shift.isOpen) {
+                          _showSnackBar('⚠️ Buka shift terlebih dahulu!');
+                          return;
+                        }
+                        context.goNamed(RouteNames.kasirExpense);
+                      },
                     ),
                     const SizedBox(height: 12),
 

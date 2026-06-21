@@ -10,9 +10,12 @@ import '../providers/menu_provider.dart';
 import '../providers/discount_provider.dart';
 import '../providers/customer_provider.dart';
 import '../providers/shift_provider.dart';
+import '../../../owner/presentation/providers/promo_provider.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/local_db_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/printer_service.dart';
+import '../../../../core/utils/pin_dialog_util.dart';
 import '../../../../shared/models/customer_model.dart';
 import '../../../../shared/models/menu_model.dart';
 
@@ -310,13 +313,18 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
             child: Column(
               children: [
                 // Price breakdown
-                if (discountAmount > 0 || taxAmount > 0) ...[
+                if (discountAmount > 0 || taxAmount > 0 || discount.servicePercent > 0) ...[
                   _priceRow('Subtotal:', CurrencyFormatter.format(subtotal), Colors.white),
                   if (discountAmount > 0)
                     _priceRow(
                         'Diskon${discount.discountType == DiscountType.percent ? ' (${discount.discountValue.toStringAsFixed(0)}%)' : ''}:',
                         '- ${CurrencyFormatter.format(discountAmount)}',
                         AppTheme.secondaryColor),
+                  if (discount.servicePercent > 0)
+                    _priceRow(
+                        'Service (${discount.servicePercent.toStringAsFixed(0)}%):',
+                        '+ ${CurrencyFormatter.format(discount.calculateServiceCharge(subtotal))}',
+                        Colors.blueAccent),
                   if (taxAmount > 0)
                     _priceRow(
                         'Pajak (${discount.taxPercent.toStringAsFixed(0)}%):',
@@ -440,6 +448,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
 
   Widget _buildDiscountTaxSection(
       double subtotal, double discountAmount, double taxAmount, double total, DiscountState discount) {
+    final hasDiscount = discountAmount > 0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: const BoxDecoration(
@@ -450,7 +459,12 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: () => _showDiscountTaxDialog(subtotal),
+            onTap: () async {
+              final isAuthorized = await PinDialogUtil.requireKasirPin(context, ref);
+              if (isAuthorized) {
+                _showDiscountTaxDialog(subtotal);
+              }
+            },
             borderRadius: BorderRadius.circular(8),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -460,21 +474,21 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      discountAmount > 0 || taxAmount > 0
-                          ? 'Diskon & Pajak (aktif)'
-                          : 'Tambah Diskon / Pajak',
+                      hasDiscount
+                          ? 'Diskon (aktif)'
+                          : 'Tambah Diskon',
                       style: TextStyle(
-                        color: discountAmount > 0 || taxAmount > 0
+                        color: hasDiscount
                             ? AppTheme.secondaryColor
                             : AppTheme.textSecondary,
                         fontSize: 13,
-                        fontWeight: discountAmount > 0 || taxAmount > 0
+                        fontWeight: hasDiscount
                             ? FontWeight.bold
                             : FontWeight.normal,
                       ),
                     ),
                   ),
-                  if (discountAmount > 0 || taxAmount > 0)
+                  if (hasDiscount)
                     GestureDetector(
                       onTap: () => ref.read(discountProvider.notifier).reset(),
                       child: const Icon(Icons.close, color: AppTheme.error, size: 16),
@@ -552,6 +566,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
   void _showCustomerSearchDialog() {
     final phoneCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
     CustomerModel? found;
     bool isSearching = false;
     bool showAddForm = false;
@@ -666,6 +681,14 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                       labelStyle: TextStyle(color: AppTheme.textSecondary),
                     ),
                   ),
+                  TextField(
+                    controller: emailCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      labelStyle: TextStyle(color: AppTheme.textSecondary),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -693,8 +716,19 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                     final res = await dio.post('/customers', data: {
                       'name': nameCtrl.text,
                       'phone': phoneCtrl.text,
+                      'email': emailCtrl.text,
                     });
-                    final newCust = CustomerModel.fromJson(res.data as Map<String, dynamic>);
+                    final newCust = CustomerModel(
+                      id: res.data['id'] ?? 999,
+                      storeId: 1, // Default storeId since it's a required parameter
+                      name: nameCtrl.text,
+                      phone: phoneCtrl.text,
+                      email: emailCtrl.text,
+                      points: 0,
+                      totalSpend: 0,
+                      visitCount: 1,
+                      createdAt: DateTime.now(),
+                    );
                     ref.read(selectedCustomerProvider.notifier).select(newCust);
                     if (ctx.mounted) Navigator.pop(ctx);
                   } catch (e) {
@@ -718,6 +752,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     DiscountType selectedType = discountState.discountType;
     double taxPercent = discountState.taxPercent;
     discountCtrl.text = discountState.discountValue.toStringAsFixed(0);
+    
+    final activePromos = ref.read(promoProvider).where((p) => p['is_active'] == true).toList();
 
     showDialog(
       context: context,
@@ -740,8 +776,34 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   style: const TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 20),
 
+              if (activePromos.isNotEmpty) ...[
+                const Text('Pilih Promo Spesial', style: TextStyle(color: Colors.white, fontSize: 13)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: activePromos.map((p) {
+                    return ActionChip(
+                      label: Text(p['name']),
+                      backgroundColor: AppTheme.surfaceDark,
+                      side: const BorderSide(color: AppTheme.secondaryColor),
+                      labelStyle: const TextStyle(color: AppTheme.secondaryColor, fontSize: 12),
+                      onPressed: () {
+                        setStateDialog(() {
+                          selectedType = p['type'] == 'percent' ? DiscountType.percent : DiscountType.nominal;
+                          discountCtrl.text = p['value'].toString();
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                const Divider(color: Colors.white24),
+                const SizedBox(height: 16),
+              ],
+
               // Discount type toggle
-              const Text('Tipe Diskon', style: TextStyle(color: Colors.white, fontSize: 13)),
+              const Text('Atau Input Manual (Tipe Diskon)', style: TextStyle(color: Colors.white, fontSize: 13)),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -803,26 +865,6 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                   prefixIcon: const Icon(Icons.discount, color: AppTheme.secondaryColor),
                 ),
               ),
-              const SizedBox(height: 20),
-              const Text('Pajak', style: TextStyle(color: Colors.white, fontSize: 13)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [0.0, 10.0, 11.0].map((pct) {
-                  return ChoiceChip(
-                    label: Text(pct == 0 ? 'Tanpa Pajak' : 'PPN ${pct.toStringAsFixed(0)}%'),
-                    selected: taxPercent == pct,
-                    onSelected: (_) => setStateDialog(() => taxPercent = pct),
-                    selectedColor: Colors.orange.withOpacity(0.3),
-                    backgroundColor: AppTheme.backgroundDark,
-                    labelStyle: TextStyle(
-                        color: taxPercent == pct ? Colors.orange : AppTheme.textSecondary,
-                        fontSize: 12),
-                    side: BorderSide(
-                        color: taxPercent == pct ? Colors.orange : const Color(0xFF334155)),
-                  );
-                }).toList(),
-              ),
             ],
           ),
           ),
@@ -836,8 +878,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                 final val = double.tryParse(discountCtrl.text) ?? 0;
                 ref.read(discountProvider.notifier)
                   ..setDiscountType(selectedType)
-                  ..setDiscountValue(val)
-                  ..setTaxPercent(taxPercent);
+                  ..setDiscountValue(val);
                 Navigator.pop(ctx);
               },
               child: const Text('Terapkan'),
@@ -986,11 +1027,9 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
   Future<void> _processSaveBill(double subtotal, double discountAmount, double taxAmount, double total, DiscountState discount, String tableNumber, String note) async {
     setState(() => _isProcessing = true);
     try {
-      final dio = ref.read(dioProvider);
+      final localDb = ref.read(localDbProvider);
       final cartItems = ref.read(cartProvider);
       final selectedCustomer = ref.read(selectedCustomerProvider);
-      final shiftState = ref.read(shiftNotifierProvider);
-      final currentShiftId = shiftState.valueOrNull?.id;
 
       final itemsData = cartItems.map((item) => {
         'menu_id': item.menu.id,
@@ -999,29 +1038,33 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
         'variant_id': item.variant?.id,
         'variant_name': item.variant?.name,
         'addons': item.addons.map((a) => {'id': a.id, 'name': a.name, 'price': a.price}).toList(),
+        'menu_name': item.menu.name, // for display purposes
       }).toList();
 
+      final billId = 'open_${DateTime.now().millisecondsSinceEpoch}';
+
       final txData = {
+        'id': billId,
         'subtotal_amount': subtotal,
         'discount_amount': discountAmount,
         'discount_type': discount.discountType == DiscountType.percent ? 'percent' : 'nominal',
         'tax_amount': taxAmount,
         'tax_percent': discount.taxPercent,
+        'service_percent': discount.servicePercent,
         'total_amount': total,
-        'payment_method': 'cash',
         'items': itemsData,
         'status': 'saved',
-        'table_number': tableNumber,
-        if (note.isNotEmpty) 'customer_note': note,
-        if (selectedCustomer != null) 'customer_id': selectedCustomer.id,
-        if (currentShiftId != null) 'shift_id': currentShiftId,
+        'table_number': tableNumber.isEmpty ? 'Umum' : tableNumber,
+        'customer_note': note,
+        'created_at': DateTime.now().toString(),
+        if (selectedCustomer != null) 'customer': {'id': selectedCustomer.id, 'name': selectedCustomer.name},
       };
 
-      await dio.post('/checkout', data: txData);
+      await localDb.saveOpenBill(txData);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Bill berhasil disimpan!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('✅ Bill berhasil disimpan ke meja!'), backgroundColor: Colors.green),
         );
         ref.read(cartProvider.notifier).clearCart();
         ref.read(discountProvider.notifier).reset();
@@ -1062,17 +1105,10 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
               const SizedBox(height: 10),
               SizedBox(
                 height: 400,
-                child: FutureBuilder(
-                  future: ref.read(dioProvider).get('/checkout/saved'),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Gagal memuat bill: ${snapshot.error}', style: const TextStyle(color: AppTheme.error)));
-                    }
+                child: Builder(
+                  builder: (context) {
+                    final bills = ref.read(localDbProvider).getOpenBills();
                     
-                    final bills = (snapshot.data?.data as List?) ?? [];
                     if (bills.isEmpty) {
                       return const Center(child: Text('Tidak ada bill tersimpan.', style: TextStyle(color: AppTheme.textSecondary)));
                     }
@@ -1084,6 +1120,7 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                         final tableNumber = bill['table_number'] ?? '-';
                         final total = bill['total_amount'] ?? 0;
                         final customer = bill['customer']?['name'] ?? 'Guest';
+                        final createdAt = (bill['created_at'] as String?)?.substring(11, 16) ?? '';
                         
                         return Card(
                           color: AppTheme.backgroundDark,
@@ -1099,30 +1136,40 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
                                       Text('Meja: $tableNumber', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                                       const SizedBox(height: 4),
                                       Text('Pelanggan: $customer', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                                      Text('Waktu: ${bill['created_at']}', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                                      Text('Waktu: $createdAt', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
                                     ],
                                   ),
                                 ),
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text(CurrencyFormatter.format(total), style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Text(CurrencyFormatter.format((total as num).toDouble()), style: const TextStyle(color: AppTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
                                     const SizedBox(height: 8),
                                     Row(
                                       children: [
                                         OutlinedButton(
                                           style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.error), padding: const EdgeInsets.symmetric(horizontal: 12)),
-                                          onPressed: () => _cancelSavedBill(bill['id'], ctx),
-                                          child: const Text('Batal', style: TextStyle(color: AppTheme.error, fontSize: 12)),
+                                          onPressed: () async {
+                                            final isAuthorized = await PinDialogUtil.requireOwnerPin(context, ref);
+                                            if (isAuthorized) {
+                                              ref.read(localDbProvider).deleteOpenBill(bill['id']);
+                                              if (context.mounted) {
+                                                Navigator.pop(ctx);
+                                                _showSavedBillsDialog(context);
+                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bill dibatalkan (Void)'), backgroundColor: Colors.orange));
+                                              }
+                                            }
+                                          },
+                                          child: const Text('Void', style: TextStyle(color: AppTheme.error, fontSize: 12)),
                                         ),
                                         const SizedBox(width: 8),
                                         ElevatedButton(
                                           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(horizontal: 12)),
                                           onPressed: () {
                                             Navigator.pop(ctx);
-                                            _showPaySavedBillDialog(context, bill);
+                                            _loadSavedBillToCart(bill);
                                           },
-                                          child: const Text('Bayar', style: TextStyle(fontSize: 12)),
+                                          child: const Text('Lanjutkan', style: TextStyle(fontSize: 12)),
                                         ),
                                       ],
                                     ),
@@ -1144,182 +1191,76 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
     );
   }
 
-  void _showPaySavedBillDialog(BuildContext context, Map<String, dynamic> bill) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        title: const Text('Pilih Metode Pembayaran', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Tagihan Meja ${bill['table_number'] ?? '-'}', style: const TextStyle(color: AppTheme.textSecondary)),
-            const SizedBox(height: 8),
-            Text(CurrencyFormatter.format(bill['total_amount'] ?? 0), style: const TextStyle(color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor, minimumSize: const Size(double.infinity, 48)),
-              icon: const Icon(Icons.money),
-              label: const Text('Bayar Tunai (Cash)'),
-              onPressed: () {
-                Navigator.pop(ctx);
-                _paySavedBill(bill['id'], 'cash');
-              },
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.secondaryColor, minimumSize: const Size(double.infinity, 48)),
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Bayar QRIS'),
-              onPressed: () {
-                Navigator.pop(ctx);
-                _processMidtransQrisForSavedBill(bill);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Kembali', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _paySavedBill(int id, String paymentMethod) async {
-    setState(() => _isProcessing = true);
+  void _loadSavedBillToCart(Map<String, dynamic> bill) {
     try {
-      await ref.read(dioProvider).put('/checkout/$id/pay', data: {'payment_method': paymentMethod});
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Pembayaran Berhasil!'), backgroundColor: Colors.green));
-        ref.read(shiftNotifierProvider.notifier).loadCurrentShift();
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Gagal bayar: $e'), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
-  }
+      final cartNotifier = ref.read(cartProvider.notifier);
+      cartNotifier.clearCart();
 
-  Future<void> _processMidtransQrisForSavedBill(Map<String, dynamic> bill) async {
-    setState(() => _isProcessing = true);
-    final dio = ref.read(dioProvider);
-    final double totalAmount = double.tryParse(bill['total_amount'].toString()) ?? 0.0;
-    try {
-      final res = await dio.post('/qris/generate', data: {'total_amount': totalAmount});
-      if (res.data != null && res.data['qr_url'] != null) {
-        final orderId = res.data['order_id'];
-        final qrUrl = res.data['qr_url'];
-        final qrString = res.data['qr_string'] ?? '';
-        if (mounted) {
-          _showQrisDialogForSavedBill(context, bill, orderId, qrUrl, qrString, totalAmount);
+      final items = bill['items'] as List<dynamic>;
+      for (var item in items) {
+        // Construct basic MenuModel
+        final menu = MenuModel(
+          id: item['menu_id'],
+          storeId: 1, // dummy
+          name: item['menu_name'] ?? 'Menu Tersimpan',
+          price: (item['price'] as num).toDouble(),
+          category: 'saved',
+        );
+
+        MenuVariant? variant;
+        if (item['variant_id'] != null) {
+          variant = MenuVariant(
+            id: item['variant_id'],
+            name: item['variant_name'] ?? 'Varian',
+            price: 0, // already included or need to be parsed
+          );
         }
-      } else {
-        throw Exception('Gagal mendapatkan QR dari Midtrans');
+
+        List<MenuAddon> addons = [];
+        if (item['addons'] != null) {
+          for (var a in item['addons']) {
+            addons.add(MenuAddon(
+              id: a['id'],
+              name: a['name'] ?? 'Topping',
+              price: (a['price'] as num).toDouble(),
+            ));
+          }
+        }
+
+        final quantity = item['quantity'] ?? 1;
+        
+        // We add directly using CartItem because CartProvider might not support full reconstruct from raw without looping, 
+        // but cartNotifier.addItem takes MenuModel. Let's see if we can just add item
+        // Wait, cartNotifier.addItem handles variant and addon.
+        cartNotifier.addItem(menu, variant: variant, addons: addons, quantity: quantity);
       }
+
+      // Restore customer if any
+      if (bill['customer'] != null) {
+        ref.read(selectedCustomerProvider.notifier).select(
+          CustomerModel(
+            id: bill['customer']['id'] ?? 999,
+            storeId: 1,
+            name: bill['customer']['name'] ?? 'Unknown',
+            phone: '',
+            points: 0,
+            totalSpend: 0.0,
+            visitCount: 0,
+            createdAt: DateTime.now(),
+          )
+        );
+      }
+
+      // Delete the open bill from Local DB since it's now in the cart
+      ref.read(localDbProvider).deleteOpenBill(bill['id']);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ Bill meja ${bill['table_number']} dimuat ke keranjang.'), backgroundColor: Colors.green),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Gagal: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
-  }
-
-  void _showQrisDialogForSavedBill(BuildContext context, Map<String, dynamic> bill, String orderId, String qrUrl, String qrString, double totalAmount) {
-    bool isChecking = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppTheme.surfaceDark,
-          title: const Text('Scan QRIS', style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(CurrencyFormatter.format(totalAmount),
-                  style: const TextStyle(
-                      color: AppTheme.secondaryColor, fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                child: Image.network(qrUrl, width: 230, height: 230, fit: BoxFit.contain,
-                    errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 100)),
-              ),
-              const SizedBox(height: 16),
-              const Text('Minta pelanggan scan QR di atas.',
-                  style: TextStyle(color: AppTheme.textSecondary), textAlign: TextAlign.center),
-              if (qrString.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SelectableText(qrString,
-                    style: const TextStyle(color: Colors.grey, fontSize: 10),
-                    textAlign: TextAlign.center),
-              ],
-              const SizedBox(height: 20),
-              if (isChecking)
-                const CircularProgressIndicator()
-              else
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.secondaryColor,
-                      minimumSize: const Size(double.infinity, 48)),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Cek Status Pembayaran'),
-                  onPressed: () async {
-                    setDialogState(() => isChecking = true);
-                    try {
-                      final res = await ref.read(dioProvider).get('/qris/status/$orderId');
-                      final status = res.data['status'];
-                      if (status == 'settlement' || status == 'capture') {
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        _paySavedBill(bill['id'], 'qris');
-                      } else {
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                              SnackBar(content: Text('Status: $status. Pelanggan belum membayar.')));
-                        }
-                      }
-                    } catch (e) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('Gagal cek status: $e')));
-                      }
-                    } finally {
-                      if (ctx.mounted) setDialogState(() => isChecking = false);
-                    }
-                  },
-                ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: isChecking ? null : () => Navigator.pop(ctx),
-              child: const Text('Batal', style: TextStyle(color: AppTheme.error)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _cancelSavedBill(int id, BuildContext ctxDialog) async {
-    try {
-      await ref.read(dioProvider).delete('/checkout/$id');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bill dibatalkan.'), backgroundColor: Colors.orange));
-        Navigator.pop(ctxDialog);
-        _showSavedBillsDialog(context); // Refresh
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Gagal batal: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Gagal memuat bill: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -1429,6 +1370,8 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
         'discount_type': discount.discountType == DiscountType.percent ? 'percent' : 'nominal',
         'tax_amount': taxAmount,
         'tax_percent': discount.taxPercent,
+        'service_amount': discount.calculateServiceCharge(subtotal),
+        'service_percent': discount.servicePercent,
         'total_amount': total,
         'payment_method': paymentMethod,
         'items': itemsData,
@@ -1474,6 +1417,17 @@ class _PosCheckoutScreenState extends ConsumerState<PosCheckoutScreen> {
       ref.read(cartProvider.notifier).clearCart();
       ref.read(discountProvider.notifier).reset();
       ref.read(selectedCustomerProvider.notifier).clear();
+
+      // Check for low stock alert
+      final notificationService = ref.read(notificationServiceProvider);
+      for (final item in cartItems) {
+        if (item.menu.stock != null && item.menu.minStock != null) {
+          final remaining = item.menu.stock! - item.quantity;
+          if (remaining <= item.menu.minStock!) {
+            notificationService.showLowStockNotification(item.menu.name, remaining);
+          }
+        }
+      }
 
       // Show print dialog
       if (mounted) _showPrintDialog();

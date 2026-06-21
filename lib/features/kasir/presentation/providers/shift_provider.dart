@@ -3,6 +3,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../shared/models/shift_model.dart';
 
 // Provider untuk shift aktif kasir saat ini
@@ -31,7 +32,8 @@ final ownerShiftsProvider = FutureProvider.autoDispose<List<ShiftModel>>((ref) a
 // Notifier untuk aksi buka/tutup shift
 class ShiftNotifier extends StateNotifier<AsyncValue<ShiftModel?>> {
   final Dio _dio;
-  ShiftNotifier(this._dio) : super(const AsyncValue.loading());
+  final NotificationService _notificationService;
+  ShiftNotifier(this._dio, this._notificationService) : super(const AsyncValue.loading());
 
   Future<void> loadCurrentShift() async {
     state = const AsyncValue.loading();
@@ -57,6 +59,10 @@ class ShiftNotifier extends StateNotifier<AsyncValue<ShiftModel?>> {
     });
     final shift = ShiftModel.fromJson(response.data['shift'] as Map<String, dynamic>);
     state = AsyncValue.data(shift);
+    
+    // Trigger local notification for shift open
+    _notificationService.showShiftNotification(shift.kasirName ?? 'Kasir', 'open');
+    
     return shift;
   }
 
@@ -68,11 +74,18 @@ class ShiftNotifier extends StateNotifier<AsyncValue<ShiftModel?>> {
     });
     final shift = ShiftModel.fromJson(response.data['shift'] as Map<String, dynamic>);
     state = const AsyncValue.data(null);
+    
+    // Trigger local notification for shift close
+    _notificationService.showShiftNotification(shift.kasirName ?? 'Kasir', 'close');
+    
     return shift;
   }
 }
 
 final shiftNotifierProvider =
     StateNotifierProvider<ShiftNotifier, AsyncValue<ShiftModel?>>((ref) {
-  return ShiftNotifier(ref.read(dioProvider));
+  return ShiftNotifier(
+    ref.read(dioProvider),
+    ref.read(notificationServiceProvider),
+  );
 });

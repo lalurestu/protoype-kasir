@@ -17,6 +17,7 @@ MenuModel _$MenuModelFromJson(Map<String, dynamic> json) => MenuModel(
       isAvailable: json['is_available'] as bool? ?? true,
       stock: (json['stock'] as num?)?.toInt(),
       minStock: (json['min_stock'] as num?)?.toInt(),
+      cogs: (json['cogs'] as num?)?.toDouble(),
       variants: (json['variants'] as List<dynamic>?)
           ?.map((e) => MenuVariant.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -36,6 +37,7 @@ Map<String, dynamic> _$MenuModelToJson(MenuModel instance) => <String, dynamic>{
       'is_available': instance.isAvailable,
       'stock': instance.stock,
       'min_stock': instance.minStock,
+      'cogs': instance.cogs,
       'variants': instance.variants,
       'addons': instance.addons,
     };

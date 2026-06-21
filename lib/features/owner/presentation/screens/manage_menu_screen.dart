@@ -16,6 +16,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
+  final _cogsController = TextEditingController();
   final _variantsController = TextEditingController();
   final _addonsController = TextEditingController();
   String _selectedCategory = 'makanan';
@@ -25,6 +26,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
+    _cogsController.dispose();
     _variantsController.dispose();
     _addonsController.dispose();
     super.dispose();
@@ -157,6 +159,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
     if (menu != null) {
       _nameController.text = menu.name;
       _priceController.text = menu.price.toString();
+      _cogsController.text = menu.cogs?.toString() ?? '';
       _selectedCategory = menu.category;
       _isAvailable = menu.isAvailable;
       _variantsController.text = (menu.variants as List?)?.map((v) => '${v.name}:${v.price.toInt()}').join(', ') ?? '';
@@ -164,6 +167,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
     } else {
       _nameController.clear();
       _priceController.clear();
+      _cogsController.clear();
       _variantsController.clear();
       _addonsController.clear();
       _selectedCategory = 'makanan';
@@ -193,9 +197,15 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                     TextFormField(
                       controller: _priceController,
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: 'Harga (Rp)', labelStyle: TextStyle(color: AppTheme.textSecondary)),
+                      decoration: const InputDecoration(labelText: 'Harga Jual (Rp)', labelStyle: TextStyle(color: AppTheme.textSecondary)),
                       keyboardType: TextInputType.number,
                       validator: (val) => val == null || val.isEmpty ? 'Isi kolom ini' : null,
+                    ),
+                    TextFormField(
+                      controller: _cogsController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Harga Modal / HPP (Rp)', labelStyle: TextStyle(color: AppTheme.textSecondary), helperText: 'Opsional: Digunakan untuk laporan Laba/Rugi.'),
+                      keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
@@ -248,6 +258,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                           await dio.post('/menus', data: {
                             'name': _nameController.text,
                             'price': double.parse(_priceController.text),
+                            'cogs': _cogsController.text.isNotEmpty ? double.parse(_cogsController.text) : null,
                             'category': _selectedCategory,
                             'is_available': _isAvailable,
                             'variants': _parseOptions(_variantsController.text),
@@ -257,6 +268,7 @@ class _ManageMenuScreenState extends ConsumerState<ManageMenuScreen> {
                           await dio.put('/menus/${menu.id}', data: {
                             'name': _nameController.text,
                             'price': double.parse(_priceController.text),
+                            'cogs': _cogsController.text.isNotEmpty ? double.parse(_cogsController.text) : null,
                             'category': _selectedCategory,
                             'is_available': _isAvailable,
                             'variants': _parseOptions(_variantsController.text),
