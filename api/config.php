@@ -1,14 +1,21 @@
 <?php
 // api/config.php
 
+define('DB_CONNECTION', 'pgsql'); // Change to 'mysql' to revert to local MySQL
 define('DB_HOST', '127.0.0.1');
-define('DB_NAME', 'prototype_kasir');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_PORT', '5432'); // Default Postgres port
+define('DB_NAME', 'postgres'); // Default Supabase DB name
+define('DB_USER', 'postgres');
+define('DB_PASS', 'your-super-secret-and-long-postgres-password');
 
 function getDBConnection() {
     try {
-        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+        if (DB_CONNECTION === 'pgsql') {
+            $dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME;
+        } else {
+            $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+        }
+        
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

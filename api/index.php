@@ -71,6 +71,24 @@ function formatRupiah($amount) {
     return (double)$amount;
 }
 
+// Helper: Send to Google Sheets via Apps Script
+function sendToGoogleSheets($transactionData) {
+    $url = 'https://script.google.com/macros/s/AKfycbyo_Uda_ipnkstCOdF0IfH35EDMRvNVysTSlo75MuSgi8xwCK-iBJtmDLCNAmOVAK0_/exec';
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($transactionData));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json'
+    ]);
+    // Timeout set to 2 seconds so it doesn't freeze the Kasir app if script is slow
+    curl_setopt($ch, CURLOPT_TIMEOUT, 2); 
+    
+    @curl_exec($ch);
+    curl_close($ch);
+}
+
 try {
     $pdo = getDBConnection();
 
@@ -1038,6 +1056,9 @@ try {
         $transaction['discount_amount'] = (double)$transaction['discount_amount'];
         $transaction['tax_amount'] = (double)$transaction['tax_amount'];
 
+        // Push to Google Sheets
+        sendToGoogleSheets($transaction);
+
         http_response_code(201);
         echo json_encode([
             "message" => "Checkout successful",
@@ -1137,6 +1158,10 @@ try {
                     WHERE id = ?
                 ")->execute([$pointsEarned, $tx['total_amount'], $tx['customer_id']]);
             }
+
+            $tx['status'] = 'completed';
+            $tx['payment_method'] = $paymentMethod;
+            sendToGoogleSheets($tx);
 
             $pdo->commit();
             echo json_encode(["message" => "Bill paid successfully"]);
@@ -1254,6 +1279,14 @@ try {
                     }
                 }
                 $inserted++;
+                
+                // Push to Google Sheets
+                $txData = $tx;
+                $txData['id'] = $txId;
+                $txData['store_id'] = $user['store_id'];
+                $txData['kasir_id'] = $user['id'];
+                $txData['created_at'] = $createdAt;
+                sendToGoogleSheets($txData);
             }
 
             $pdo->commit();
