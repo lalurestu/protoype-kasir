@@ -2,11 +2,11 @@
 // api/config.php
 
 define('DB_CONNECTION', 'pgsql'); // Change to 'mysql' to revert to local MySQL
-define('DB_HOST', '127.0.0.1');
-define('DB_PORT', '5432'); // Default Postgres port
-define('DB_NAME', 'postgres'); // Default Supabase DB name
-define('DB_USER', 'postgres');
-define('DB_PASS', 'your-super-secret-and-long-postgres-password');
+define('DB_HOST', 'aws-1-ap-southeast-1.pooler.supabase.com');
+define('DB_PORT', '6543'); // Using Transaction Pooler port
+define('DB_NAME', 'postgres'); 
+define('DB_USER', 'postgres.zfrvrkmlfeaewyrvgkrd');
+define('DB_PASS', 'Veyrant2026');
 
 function getDBConnection() {
     try {

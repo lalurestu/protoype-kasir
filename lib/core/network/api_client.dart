@@ -7,7 +7,7 @@ import 'dio_interceptor.dart';
 
 String _getBaseUrl() {
   // Using localtunnel public URL for cross-network testing
-  return 'https://eleven-ghosts-clap.loca.lt/protoype-kasir/api';
+  return 'http://10.0.2.2/protoype-kasir/api';
 }
 
 final dioProvider = Provider<Dio>((ref) {
@@ -19,7 +19,8 @@ final dioProvider = Provider<Dio>((ref) {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Bypass-Tunnel-Reminder': 'true', // Required to bypass localtunnel warning page
+        'Bypass-Tunnel-Reminder':
+            'true', // Required to bypass localtunnel warning page
       },
     ),
   );

@@ -156,8 +156,9 @@ try {
         $user['id'] = (int)$user['id'];
 
         $token = bin2hex(random_bytes(32));
-        $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 2 HOUR))");
-        $stmtToken->execute([$userId, $token]);
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+2 hours'));
+        $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, ?)");
+        $stmtToken->execute([$userId, $token, $expiresAt]);
 
         http_response_code(201);
         echo json_encode([
@@ -214,8 +215,9 @@ try {
         ];
 
         $token = bin2hex(random_bytes(32));
-        $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 8 HOUR))");
-        $stmtToken->execute([$user['id'], $token]);
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+8 hours'));
+        $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, ?)");
+        $stmtToken->execute([$user['id'], $token, $expiresAt]);
 
         http_response_code(200);
         echo json_encode([
@@ -1358,7 +1360,7 @@ try {
             SELECT SUM(t.total_amount) as total_sales, COUNT(t.id) as total_orders
             FROM transactions t
             JOIN stores s ON t.store_id = s.id
-            WHERE s.owner_id = ? AND DATE(t.created_at) = CURDATE()
+            WHERE s.owner_id = ? AND CAST(t.created_at AS DATE) = CURRENT_DATE
         ");
         $stmt->execute([$user['id']]);
         $today = $stmt->fetch();
@@ -1419,7 +1421,7 @@ try {
                 SUM(discount_amount) as total_discount,
                 SUM(tax_amount) as total_tax
             FROM transactions
-            WHERE kasir_id = ? AND DATE(created_at) = CURDATE() AND status = 'completed'
+            WHERE kasir_id = ? AND CAST(created_at AS DATE) = CURRENT_DATE AND status = 'completed'
         ");
         $stmt->execute([$user['id']]);
         $report = $stmt->fetch();
@@ -1427,7 +1429,7 @@ try {
         $stmtTx = $pdo->prepare("
             SELECT id, created_at, payment_method, total_amount, subtotal_amount, discount_amount, tax_amount, customer_id
             FROM transactions
-            WHERE kasir_id = ? AND DATE(created_at) = CURDATE() AND status = 'completed'
+            WHERE kasir_id = ? AND CAST(created_at AS DATE) = CURRENT_DATE AND status = 'completed'
             ORDER BY created_at DESC
         ");
         $stmtTx->execute([$user['id']]);
