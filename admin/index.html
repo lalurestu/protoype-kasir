@@ -800,15 +800,21 @@
             <!-- Header -->
             <div class="content-header">
                 <div>
-                    <div class="content-title">Manajemen Tenant (Owner)</div>
+                    <div class="content-title">Manajemen Tenant (Owner) & Serial Key</div>
                     <div class="content-subtitle">
-                        Kontrol akses masuk dan status semua pemilik toko dalam sistem
+                        Kelola akun pemilik toko, buat akun langsung, dan generator serial key lisensi
                     </div>
                 </div>
-                <button class="btn-generate" @click="generateCode" id="btn-generate-code">
-                    <span>✨</span>
-                    <span>Buat Kode Pendaftaran</span>
-                </button>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                    <button class="btn-generate" @click="showCreateOwnerModal = true" style="background:linear-gradient(135deg, #10b981, #059669);">
+                        <span>👤➕</span>
+                        <span>Buat Akun Owner</span>
+                    </button>
+                    <button class="btn-generate" @click="openSerialKeyModal">
+                        <span>🔑</span>
+                        <span>Daftar & Generator Serial Key</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Stats Cards -->
@@ -957,6 +963,118 @@
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════
+         MODAL BUAT AKUN OWNER LANGSUNG
+         ══════════════════════════════════════════════════════════ -->
+    <div v-if="showCreateOwnerModal" class="modal-overlay" @click.self="showCreateOwnerModal = false">
+        <div class="modal-card" style="max-width: 480px;">
+            <h3 class="modal-title">👤➕ Buat Akun Owner Langsung</h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px;">
+                Buat akun Owner baru beserta tokonya secara langsung dari portal Super Admin.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:14px;text-align:left;">
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Nama Pemilik (Owner)</label>
+                    <input type="text" v-model="newOwner.name" placeholder="Contoh: Andi Pratama" style="width:100%;padding:10px 14px;background:var(--bg-900);border:1px solid var(--border-strong);border-radius:8px;color:white;font-family:inherit;">
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Alamat Email</label>
+                    <input type="email" v-model="newOwner.email" placeholder="owner@toko.com" style="width:100%;padding:10px 14px;background:var(--bg-900);border:1px solid var(--border-strong);border-radius:8px;color:white;font-family:inherit;">
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Kata Sandi (Password)</label>
+                    <input type="password" v-model="newOwner.password" placeholder="Minimal 6 karakter" style="width:100%;padding:10px 14px;background:var(--bg-900);border:1px solid var(--border-strong);border-radius:8px;color:white;font-family:inherit;">
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Nama Toko / Usaha</label>
+                    <input type="text" v-model="newOwner.store_name" placeholder="Contoh: Kopi Kenangan Jaya" style="width:100%;padding:10px 14px;background:var(--bg-900);border:1px solid var(--border-strong);border-radius:8px;color:white;font-family:inherit;">
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Masa Aktif Lisensi Toko</label>
+                    <select v-model="newOwner.duration_days" style="width:100%;padding:10px 14px;background:var(--bg-900);border:1px solid var(--border-strong);border-radius:8px;color:white;font-family:inherit;">
+                        <option :value="30">30 Hari (1 Bulan)</option>
+                        <option :value="180">180 Hari (6 Bulan)</option>
+                        <option :value="365">365 Hari (1 Tahun)</option>
+                        <option :value="99999">Lifetime (Tanpa Batas)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions" style="margin-top:24px;">
+                <button class="btn-cancel" @click="showCreateOwnerModal = false">Batal</button>
+                <button class="btn-generate" @click="executeCreateOwner" :disabled="isCreatingOwner" style="background:linear-gradient(135deg, #10b981, #059669);">
+                    <span v-if="isCreatingOwner" class="spinner" style="width:16px;height:16px;"></span>
+                    <span v-else>Simpan & Buat Akun</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         MODAL DAFTAR & GENERATOR SERIAL KEY
+         ══════════════════════════════════════════════════════════ -->
+    <div v-if="showSerialKeyModal" class="modal-overlay" @click.self="showSerialKeyModal = false">
+        <div class="modal-card" style="max-width: 780px;width:95%;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 class="modal-title" style="margin:0;">🔑 Generator & Daftar Serial Key Lisensi</h3>
+                <button @click="showSerialKeyModal = false" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">✖</button>
+            </div>
+            
+            <!-- Form Generator -->
+            <div style="background:var(--bg-900);padding:16px;border-radius:12px;border:1px solid var(--border);display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:180px;">
+                    <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px;">Pilih Durasi Lisensi</label>
+                    <select v-model="selectedDuration" style="width:100%;padding:8px 12px;background:var(--bg-800);border:1px solid var(--border-strong);border-radius:6px;color:white;font-family:inherit;">
+                        <option :value="30">30 Hari (1 Bulan)</option>
+                        <option :value="180">180 Hari (6 Bulan)</option>
+                        <option :value="365">365 Hari (1 Tahun)</option>
+                        <option :value="99999">Lifetime (Tanpa Batas)</option>
+                    </select>
+                </div>
+                <button class="btn-generate" @click="generateSerialKey" :disabled="isGeneratingKey" style="margin-top:auto;">
+                    <span v-if="isGeneratingKey" class="spinner" style="width:16px;height:16px;"></span>
+                    <span v-else>✨ Buat Serial Key Baru</span>
+                </button>
+            </div>
+
+            <!-- List Table -->
+            <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;">
+                <div v-if="isLoadingSerialKeys" style="padding:32px;text-align:center;">
+                    <div class="spinner" style="width:28px;height:28px;margin:0 auto 8px;"></div>
+                    <div style="font-size:13px;color:var(--text-muted);">Memuat Serial Key...</div>
+                </div>
+                <table v-else-if="serialKeys.length > 0" style="width:100%;font-size:13px;">
+                    <thead>
+                        <tr style="background:var(--bg-900);">
+                            <th style="padding:10px;text-align:left;">Kode Serial Key</th>
+                            <th style="padding:10px;text-align:left;">Durasi</th>
+                            <th style="padding:10px;text-align:left;">Status</th>
+                            <th style="padding:10px;text-align:left;">Digunakan Oleh</th>
+                            <th style="padding:10px;text-align:right;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="sk in serialKeys" :key="sk.id" style="border-top:1px solid var(--border);">
+                            <td style="padding:10px;font-family:monospace;font-weight:bold;color:var(--primary-light);">{{ sk.code }}</td>
+                            <td style="padding:10px;">{{ sk.duration_days >= 99999 ? 'Lifetime' : sk.duration_days + ' Hari' }}</td>
+                            <td style="padding:10px;">
+                                <span v-if="!sk.is_used" class="status-badge status-active">Belum Dipakai</span>
+                                <span v-else class="status-badge status-suspended">Telah Dipakai</span>
+                            </td>
+                            <td style="padding:10px;color:var(--text-secondary);">
+                                {{ sk.used_by_name ? sk.used_by_name + ' (' + sk.used_by_email + ')' : '-' }}
+                            </td>
+                            <td style="padding:10px;text-align:right;">
+                                <button class="btn-copy" @click="copyText(sk.code)" style="padding:4px 8px;font-size:11px;">📋 Salin</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div v-else style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">
+                    Belum ada Serial Key yang dibuat.
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -1085,6 +1203,96 @@
                 }
             };
 
+            // Create Owner State
+            const showCreateOwnerModal = ref(false);
+            const isCreatingOwner = ref(false);
+            const newOwner = ref({ name: '', email: '', password: '', store_name: '', duration_days: 365 });
+
+            // Serial Key State
+            const showSerialKeyModal = ref(false);
+            const isLoadingSerialKeys = ref(false);
+            const isGeneratingKey = ref(false);
+            const selectedDuration = ref(30);
+            const serialKeys = ref([]);
+
+            const executeCreateOwner = async () => {
+                if (!newOwner.value.name || !newOwner.value.email || !newOwner.value.password) {
+                    alert('⚠️ Nama, Email, dan Password wajib diisi!');
+                    return;
+                }
+                isCreatingOwner.value = true;
+                try {
+                    const res = await fetch(`${API_URL}/admin/create-owner`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token.value}`
+                        },
+                        body: JSON.stringify(newOwner.value)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Gagal membuat akun owner');
+                    alert('🎉 ' + data.message);
+                    showCreateOwnerModal.value = false;
+                    newOwner.value = { name: '', email: '', password: '', store_name: '', duration_days: 365 };
+                    fetchOwners();
+                } catch (e) {
+                    alert('❌ ' + e.message);
+                } finally {
+                    isCreatingOwner.value = false;
+                }
+            };
+
+            const openSerialKeyModal = () => {
+                showSerialKeyModal.value = true;
+                fetchSerialKeys();
+            };
+
+            const fetchSerialKeys = async () => {
+                if (!token.value) return;
+                isLoadingSerialKeys.value = true;
+                try {
+                    const res = await fetch(`${API_URL}/admin/serial-keys`, {
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+                    if (res.status === 401 || res.status === 403) { logout(); return; }
+                    const data = await res.json();
+                    serialKeys.value = Array.isArray(data) ? data : [];
+                } catch (e) {
+                    console.error('Gagal fetch serial keys:', e);
+                } finally {
+                    isLoadingSerialKeys.value = false;
+                }
+            };
+
+            const generateSerialKey = async () => {
+                isGeneratingKey.value = true;
+                try {
+                    const res = await fetch(`${API_URL}/admin/generate-code`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token.value}`
+                        },
+                        body: JSON.stringify({ duration_days: selectedDuration.value })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Gagal generate serial key');
+                    alert(`🎉 Serial Key Baru Berhasil Dibuat:\n\n${data.code}\n\nDurasi: ${data.duration_days >= 99999 ? 'Lifetime' : data.duration_days + ' Hari'}`);
+                    fetchSerialKeys();
+                } catch (e) {
+                    alert('❌ ' + e.message);
+                } finally {
+                    isGeneratingKey.value = false;
+                }
+            };
+
+            const copyText = (txt) => {
+                navigator.clipboard.writeText(txt).then(() => {
+                    alert('✅ Kode "' + txt + '" telah disalin!');
+                });
+            };
+
             onMounted(() => {
                 if (token.value) fetchOwners();
             });
@@ -1093,6 +1301,9 @@
                 token, email, password, error, isLoading, isLoadingOwners, isToggling,
                 owners, newCode, copied, showModal, modalOwner, currentView,
                 activeCount, suspendedCount,
+                showCreateOwnerModal, isCreatingOwner, newOwner, executeCreateOwner,
+                showSerialKeyModal, isLoadingSerialKeys, isGeneratingKey, selectedDuration, serialKeys,
+                openSerialKeyModal, fetchSerialKeys, generateSerialKey, copyText,
                 login, logout, fetchOwners, generateCode, copyCode,
                 confirmToggle, executeToggle, formatDate
             };

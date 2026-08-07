@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/local_db_service.dart';
+import '../../../../core/network/api_client.dart';
 
 class OwnerLicenseScreen extends ConsumerStatefulWidget {
   const OwnerLicenseScreen({super.key});
@@ -36,18 +38,19 @@ class _OwnerLicenseScreenState extends ConsumerState<OwnerLicenseScreen> {
 
     setState(() => _isLoading = true);
 
-    // Simulate network validation
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final dio = ref.read(dioProvider);
+      final response = await dio.post('/owner/activate-serial-key', data: {
+        'serial_key': key,
+      });
 
-    if (key.startsWith('SELLORA-')) {
-      final now = DateTime.now();
-      // Add 1 year of maintenance
-      final expiry = now.add(const Duration(days: 365));
-      
+      final message = response.data['message'] ?? 'Lisensi berhasil diaktifkan!';
+      final expiresAt = response.data['license_expires_at'];
+
       final licenseInfo = {
         'serial_key': key,
-        'activation_date': now.toIso8601String(),
-        'expiry_date': expiry.toIso8601String(),
+        'activation_date': DateTime.now().toIso8601String(),
+        'expiry_date': expiresAt ?? DateTime.now().add(const Duration(days: 365)).toIso8601String(),
         'status': 'ACTIVE',
       };
 
@@ -55,21 +58,28 @@ class _OwnerLicenseScreenState extends ConsumerState<OwnerLicenseScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Lisensi berhasil diaktivasi! Maintenance diperpanjang 1 tahun.'), backgroundColor: Colors.green),
+          SnackBar(content: Text('✅ $message'), backgroundColor: Colors.green),
         );
         _keyCtrl.clear();
         _loadLicense();
       }
-    } else {
+    } on DioException catch (e) {
+      final errorMsg = e.response?.data is Map ? e.response?.data['error']?.toString() : null;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Serial Key tidak valid!'), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${errorMsg ?? "Gagal mengaktifkan serial key."}'), backgroundColor: Colors.red),
         );
       }
-    }
-
-    if (mounted) {
-      setState(() => _isLoading = false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Terjadi kesalahan: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -124,12 +134,12 @@ class _OwnerLicenseScreenState extends ConsumerState<OwnerLicenseScreen> {
             ],
 
             const Text(
-              'Aktivasi / Perpanjang Lisensi',
+              'Aktivasi / Perpanjang Lisensi Toko',
               style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Masukkan Serial Key yang Tuan terima dari tim SELLORA untuk mengaktifkan sistem atau memperpanjang masa maintenance.',
+              'Masukkan Kode Serial Key yang Anda dapatkan dari Super Admin untuk mengaktifkan sistem atau memperpanjang masa berlaku lisensi toko.',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
             ),
             const SizedBox(height: 24),
@@ -149,7 +159,7 @@ class _OwnerLicenseScreenState extends ConsumerState<OwnerLicenseScreen> {
                     controller: _keyCtrl,
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      hintText: 'Contoh: SELLORA-XXXX-XXXX',
+                      hintText: 'Contoh: KEY-XXXX-XXXX',
                     ),
                   ),
                   const SizedBox(height: 32),

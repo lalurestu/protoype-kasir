@@ -113,16 +113,17 @@ try {
         $input = json_decode(file_get_contents('php://input'), true);
         if (empty($input['name']) || empty($input['email']) || empty($input['password']) || empty($input['verification_code'])) {
             http_response_code(400);
-            echo json_encode(["error" => "Name, email, password, and verification_code are required"]);
+            echo json_encode(["error" => "Nama, email, password, dan Kode Serial Key wajib diisi"]);
             exit;
         }
 
-        $stmtCode = $pdo->prepare("SELECT id FROM verification_codes WHERE code = ? AND is_used = FALSE LIMIT 1");
-        $stmtCode->execute([$input['verification_code']]);
+        $codeStr = trim($input['verification_code']);
+        $stmtCode = $pdo->prepare("SELECT id, duration_days FROM verification_codes WHERE UPPER(TRIM(code)) = UPPER(TRIM(?)) AND is_used = FALSE LIMIT 1");
+        $stmtCode->execute([$codeStr]);
         $verif = $stmtCode->fetch();
         if (!$verif) {
             http_response_code(400);
-            echo json_encode(["error" => "Invalid or already used verification code"]);
+            echo json_encode(["error" => "Kode Serial Key / Verifikasi tidak valid atau sudah pernah digunakan"]);
             exit;
         }
 
@@ -130,43 +131,68 @@ try {
         $stmt->execute([$input['email']]);
         if ($stmt->fetch()) {
             http_response_code(400);
-            echo json_encode(["error" => "The email has already been taken."]);
+            echo json_encode(["error" => "Email tersebut sudah terdaftar dalam sistem"]);
             exit;
         }
+
+        $durationDays = (int)($verif['duration_days'] ?? 30);
+        $storeName = !empty($input['store_name']) ? trim($input['store_name']) : 'Toko ' . trim($input['name']);
 
         $pdo->beginTransaction();
         try {
             $passwordHash = password_hash($input['password'], PASSWORD_BCRYPT);
-            $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'owner')");
-            $stmt->execute([$input['name'], $input['email'], $passwordHash]);
-            $userId = $pdo->lastInsertId();
+            
+            // PostgreSQL interval handling vs MySQL handling
+            if (DB_CONNECTION === 'pgsql') {
+                $stmt = $pdo->prepare("
+                    INSERT INTO users (name, email, password, role, license_expires_at) 
+                    VALUES (?, ?, ?, 'owner', (NOW() + INTERVAL '$durationDays days')) 
+                    RETURNING id
+                ");
+                $stmt->execute([$input['name'], $input['email'], $passwordHash]);
+                $userId = $stmt->fetchColumn();
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO users (name, email, password, role, license_expires_at) 
+                    VALUES (?, ?, ?, 'owner', DATE_ADD(NOW(), INTERVAL ? DAY))
+                ");
+                $stmt->execute([$input['name'], $input['email'], $passwordHash, $durationDays]);
+                $userId = $pdo->lastInsertId();
+            }
 
-            $pdo->exec("UPDATE verification_codes SET is_used = TRUE WHERE id = " . $verif['id']);
+            // Create Store
+            $stmtStore = $pdo->prepare("INSERT INTO stores (owner_id, name, address) VALUES (?, ?, ?)");
+            $stmtStore->execute([$userId, $storeName, 'Alamat Belum Diatur']);
+            
+            // Mark verification code as used
+            $stmtMark = $pdo->prepare("UPDATE verification_codes SET is_used = TRUE, used_by_user_id = ?, used_at = NOW() WHERE id = ?");
+            $stmtMark->execute([$userId, $verif['id']]);
+
             $pdo->commit();
         } catch (Exception $e) {
             $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(["error" => "Database error"]);
+            echo json_encode(["error" => "Gagal mendaftar: " . $e->getMessage()]);
             exit;
         }
 
-        $stmt = $pdo->prepare("SELECT id, name, email, role, store_id FROM users WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT id, name, email, role, store_id, license_expires_at FROM users WHERE id = ?");
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
         $user['id'] = (int)$user['id'];
 
         $token = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', strtotime('+2 hours'));
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+8 hours'));
         $stmtToken = $pdo->prepare("INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, ?)");
         $stmtToken->execute([$userId, $token, $expiresAt]);
 
         http_response_code(201);
         echo json_encode([
-            "message" => "Owner registered successfully",
+            "message" => "Akun Owner berhasil terdaftar!",
             "user" => $user,
             "access_token" => $token,
             "token_type" => "bearer",
-            "expires_in" => 7200
+            "expires_in" => 28800
         ]);
         exit;
 
@@ -1795,22 +1821,188 @@ try {
         exit;
 
     // =========================================================================
-    // SUPER ADMIN ROUTES
+    // SUPER ADMIN & LICENSE ROUTES
     // =========================================================================
+
+    } elseif ($method === 'POST' && $route === '/api/admin/create-owner') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input['name']) || empty($input['email']) || empty($input['password'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Nama, email, dan password wajib diisi']);
+            exit;
+        }
+
+        $email = trim($input['email']);
+        $stmtCheck = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
+        $stmtCheck->execute([$email]);
+        if ($stmtCheck->fetch()) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Email tersebut sudah terdaftar dalam sistem']);
+            exit;
+        }
+
+        $durationDays = isset($input['duration_days']) ? (int)$input['duration_days'] : 365;
+        $storeName = !empty($input['store_name']) ? trim($input['store_name']) : 'Toko ' . trim($input['name']);
+        $passwordHash = password_hash($input['password'], PASSWORD_BCRYPT);
+
+        $pdo->beginTransaction();
+        try {
+            if (DB_CONNECTION === 'pgsql') {
+                $stmtIns = $pdo->prepare("
+                    INSERT INTO users (name, email, password, role, license_expires_at, is_active) 
+                    VALUES (?, ?, ?, 'owner', (NOW() + INTERVAL '$durationDays days'), true)
+                    RETURNING id
+                ");
+                $stmtIns->execute([trim($input['name']), $email, $passwordHash]);
+                $ownerId = $stmtIns->fetchColumn();
+            } else {
+                $stmtIns = $pdo->prepare("
+                    INSERT INTO users (name, email, password, role, license_expires_at, is_active) 
+                    VALUES (?, ?, ?, 'owner', DATE_ADD(NOW(), INTERVAL ? DAY), true)
+                ");
+                $stmtIns->execute([trim($input['name']), $email, $passwordHash, $durationDays]);
+                $ownerId = $pdo->lastInsertId();
+            }
+
+            // Create Store
+            $stmtStore = $pdo->prepare("INSERT INTO stores (owner_id, name, address) VALUES (?, ?, ?)");
+            $stmtStore->execute([$ownerId, $storeName, 'Alamat Toko Belum Diatur']);
+
+            $pdo->commit();
+            echo json_encode([
+                'message' => 'Akun Owner & Toko berhasil dibuat oleh Super Admin!',
+                'owner' => [
+                    'id' => (int)$ownerId,
+                    'name' => $input['name'],
+                    'email' => $email,
+                    'role' => 'owner',
+                    'store_name' => $storeName,
+                    'duration_days' => $durationDays
+                ]
+            ]);
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Gagal membuat akun owner: ' . $e->getMessage()]);
+            exit;
+        }
 
     } elseif ($method === 'POST' && $route === '/api/admin/generate-code') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
 
-        $code = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"), 0, 8);
-        $pdo->prepare("INSERT INTO verification_codes (code) VALUES (?)")->execute([$code]);
-        echo json_encode(['code' => $code]); exit;
+        $input = json_decode(file_get_contents('php://input'), true);
+        $durationDays = isset($input['duration_days']) ? (int)$input['duration_days'] : 30;
+
+        // Generate serial format: KEY-XXXX-XXXX
+        $rand1 = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"), 0, 4);
+        $rand2 = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"), 0, 4);
+        $code = "KEY-" . $rand1 . "-" . $rand2;
+
+        $pdo->prepare("INSERT INTO verification_codes (code, duration_days) VALUES (?, ?)")->execute([$code, $durationDays]);
+        echo json_encode([
+            'code' => $code,
+            'duration_days' => $durationDays,
+            'created_at' => date('Y-m-d H:i:s')
+        ]);
+        exit;
+
+    } elseif ($method === 'GET' && $route === '/api/admin/serial-keys') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $stmt = $pdo->query("
+            SELECT vc.id, vc.code, vc.duration_days, vc.is_used, vc.used_by_user_id, vc.used_at, vc.created_at,
+                   u.name as used_by_name, u.email as used_by_email
+            FROM verification_codes vc
+            LEFT JOIN users u ON vc.used_by_user_id = u.id
+            ORDER BY vc.created_at DESC
+        ");
+        $keys = $stmt->fetchAll();
+        foreach ($keys as &$k) {
+            $k['id'] = (int)$k['id'];
+            $k['duration_days'] = (int)$k['duration_days'];
+            $k['is_used'] = (bool)$k['is_used'];
+        }
+        echo json_encode($keys);
+        exit;
+
+    } elseif ($method === 'POST' && $route === '/api/owner/activate-serial-key') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input['serial_key'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Kode Serial Key wajib diisi']);
+            exit;
+        }
+
+        $serialKey = trim($input['serial_key']);
+        $stmtKey = $pdo->prepare("SELECT id, duration_days FROM verification_codes WHERE UPPER(TRIM(code)) = UPPER(TRIM(?)) AND is_used = FALSE LIMIT 1");
+        $stmtKey->execute([$serialKey]);
+        $keyData = $stmtKey->fetch();
+
+        if (!$keyData) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Kode Serial Key tidak valid atau sudah pernah digunakan']);
+            exit;
+        }
+
+        $durationDays = (int)$keyData['duration_days'];
+
+        $pdo->beginTransaction();
+        try {
+            if (DB_CONNECTION === 'pgsql') {
+                $pdo->prepare("
+                    UPDATE users 
+                    SET license_expires_at = CASE 
+                        WHEN license_expires_at > NOW() THEN license_expires_at + INTERVAL '$durationDays days'
+                        ELSE NOW() + INTERVAL '$durationDays days'
+                    END
+                    WHERE id = ?
+                ")->execute([$user['id']]);
+            } else {
+                $pdo->prepare("
+                    UPDATE users 
+                    SET license_expires_at = CASE 
+                        WHEN license_expires_at > NOW() THEN DATE_ADD(license_expires_at, INTERVAL ? DAY)
+                        ELSE DATE_ADD(NOW(), INTERVAL ? DAY)
+                    END
+                    WHERE id = ?
+                ")->execute([$durationDays, $durationDays, $user['id']]);
+            }
+
+            $pdo->prepare("UPDATE verification_codes SET is_used = TRUE, used_by_user_id = ?, used_at = NOW() WHERE id = ?")
+                ->execute([$user['id'], $keyData['id']]);
+
+            $pdo->commit();
+
+            $stmtUpdated = $pdo->prepare("SELECT license_expires_at FROM users WHERE id = ?");
+            $stmtUpdated->execute([$user['id']]);
+            $updated = $stmtUpdated->fetch();
+
+            echo json_encode([
+                'message' => "Lisensi berhasil diperpanjang sebesar $durationDays hari!",
+                'license_expires_at' => $updated['license_expires_at']
+            ]);
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Gagal mengaktifkan serial key: ' . $e->getMessage()]);
+            exit;
+        }
 
     } elseif ($method === 'GET' && $route === '/api/admin/owners') {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
 
-        $stmt = $pdo->query("SELECT id, name, email, is_active, created_at FROM users WHERE role = 'owner' ORDER BY created_at DESC");
+        $stmt = $pdo->query("SELECT id, name, email, is_active, license_expires_at, created_at FROM users WHERE role = 'owner' ORDER BY created_at DESC");
         echo json_encode($stmt->fetchAll()); exit;
 
     } elseif ($method === 'POST' && preg_match('/^\/api\/admin\/owners\/(\d+)\/toggle$/', $route, $matches)) {

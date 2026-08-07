@@ -6,8 +6,11 @@ import '../../features/auth/presentation/providers/auth_provider.dart';
 import 'dio_interceptor.dart';
 
 String _getBaseUrl() {
-  // Using localtunnel public URL for cross-network testing
-  return 'http://10.0.2.2/protoype-kasir/api';
+  if (kIsWeb) {
+    return 'http://localhost/protoype-kasir/api';
+  }
+  // Public HTTPS URL - Dapat diakses dari HP Android via Paket Data / Wi-Fi manapun!
+  return 'https://pos-kasir-prototype.loca.lt/protoype-kasir/api';
 }
 
 final dioProvider = Provider<Dio>((ref) {

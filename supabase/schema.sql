@@ -116,11 +116,14 @@ CREATE TABLE user_tokens (
     expires_at TIMESTAMP NOT NULL
 );
 
--- 9. Tabel verification_codes
+-- 9. Tabel verification_codes (Serial Keys / Kode Aktivasi)
 CREATE TABLE verification_codes (
     id SERIAL PRIMARY KEY,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(50) UNIQUE NOT NULL,
+    duration_days INT DEFAULT 30 NOT NULL,
     is_used BOOLEAN DEFAULT FALSE NOT NULL,
+    used_by_user_id INT NULL REFERENCES users(id) ON DELETE SET NULL,
+    used_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

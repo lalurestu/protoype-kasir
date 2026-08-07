@@ -70,22 +70,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> login(String email, String password) async {
-    try {
-      final response = await _dio.post('/auth/login', data: {
-        'email': email,
-        'password': password,
-      });
-      
-      final token = response.data['access_token'];
-      final roleStr = response.data['user']['role'];
-      
-      await _storage.saveToken(token);
-      state = AuthState(isAuthenticated: true, isPinVerified: false, role: _parseRole(roleStr));
-    } on DioException catch (e) {
-      throw Exception('DioError: ${e.message} | Response: ${e.response?.data}');
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
+    final response = await _dio.post('/auth/login', data: {
+      'email': email,
+      'password': password,
+    });
+    
+    final token = response.data['access_token'];
+    final roleStr = response.data['user']['role'];
+    
+    await _storage.saveToken(token);
+    state = AuthState(isAuthenticated: true, isPinVerified: false, role: _parseRole(roleStr));
   }
 
   Future<void> logout() async {
