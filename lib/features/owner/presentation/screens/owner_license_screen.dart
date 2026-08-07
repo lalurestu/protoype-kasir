@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/local_db_service.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/routing/route_names.dart';
 
 class OwnerLicenseScreen extends ConsumerStatefulWidget {
   const OwnerLicenseScreen({super.key});
@@ -174,6 +175,18 @@ class _OwnerLicenseScreenState extends ConsumerState<OwnerLicenseScreen> {
                       child: _isLoading 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : const Text('Validasi Key', style: TextStyle(fontSize: 16, color: Colors.white)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => context.pushNamed(RouteNames.ownerMaintenancePayment),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: AppTheme.primaryColor),
+                      ),
+                      child: const Text('Perpanjang via Pembayaran QRIS', style: TextStyle(fontSize: 16, color: AppTheme.primaryColor)),
                     ),
                   ),
                 ],

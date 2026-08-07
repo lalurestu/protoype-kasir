@@ -212,6 +212,32 @@ try {
     ) ENGINE=InnoDB;");
     echo "[OK] Tabel 'password_reset_requests' siap.\n";
 
+    // ─────────────────────────────────────────────────────────────────────
+    // 11. ALTER TABLE users - Tambah maintenance_price
+    // ─────────────────────────────────────────────────────────────────────
+    try {
+        $pdo->exec("ALTER TABLE `users` ADD COLUMN `maintenance_price` DECIMAL(15, 2) DEFAULT 0 NOT NULL;");
+        echo "[OK] users: kolom 'maintenance_price' ditambahkan.\n";
+    } catch (PDOException $e) {
+        echo "[SKIP] users.maintenance_price sudah ada.\n";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 12. CREATE TABLE maintenance_transactions
+    // ─────────────────────────────────────────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `maintenance_transactions` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `user_id` INT NOT NULL,
+        `order_id` VARCHAR(100) UNIQUE NOT NULL,
+        `amount` DECIMAL(15, 2) NOT NULL,
+        `duration_days` INT NOT NULL,
+        `status` ENUM('pending', 'success', 'failed') DEFAULT 'pending' NOT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `paid_at` TIMESTAMP NULL,
+        FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB;");
+    echo "[OK] Tabel 'maintenance_transactions' siap.\n";
+
     echo "\n=== ✅ Semua Migrasi Berhasil! ===\n";
 
 } catch (Exception $e) {

@@ -771,9 +771,13 @@
             </div>
 
             <nav class="sidebar-nav">
-                <div class="nav-item active" @click="currentView = 'owners'">
+                <div class="nav-item" :class="{active: currentView === 'owners'}" @click="currentView = 'owners'">
                     <span class="nav-icon">👥</span>
                     <span>Manajemen Tenant</span>
+                </div>
+                <div class="nav-item" :class="{active: currentView === 'maintenance'}" @click="currentView = 'maintenance'">
+                    <span class="nav-icon">💰</span>
+                    <span>Laporan Maintenance</span>
                 </div>
                 <div class="nav-item" style="cursor:default;opacity:0.4;">
                     <span class="nav-icon">📊</span>
@@ -797,6 +801,7 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <div v-show="currentView === 'owners'">
             <!-- Header -->
             <div class="content-header">
                 <div>
@@ -928,6 +933,62 @@
                     </table>
                 </div>
             </div>
+            </div> <!-- End of owners view -->
+
+            <!-- Laporan Maintenance View -->
+            <div v-show="currentView === 'maintenance'">
+                <div class="content-header">
+                    <div>
+                        <div class="content-title">Laporan Maintenance</div>
+                        <div class="content-subtitle">Histori pembayaran maintenance & perpanjangan lisensi dari seluruh tenant via Midtrans</div>
+                    </div>
+                    <button class="btn-generate" @click="fetchMaintenanceHistory">
+                        <span>🔄</span>
+                        <span>Refresh Data</span>
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Tenant</th>
+                                <th>Nominal</th>
+                                <th>Durasi</th>
+                                <th>Status</th>
+                                <th>Tanggal Bayar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-if="maintenanceHistory.length === 0">
+                                <td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">
+                                    Belum ada transaksi maintenance tercatat.
+                                </td>
+                            </tr>
+                            <tr v-for="trx in maintenanceHistory" :key="trx.id">
+                                <td style="font-family:monospace;color:var(--text-secondary);">{{ trx.order_id }}</td>
+                                <td>
+                                    <div class="owner-name">{{ trx.owner_name }}</div>
+                                    <div class="owner-date">{{ trx.owner_email }}</div>
+                                </td>
+                                <td style="font-weight:600;color:var(--primary);">
+                                    Rp {{ Number(trx.amount).toLocaleString('id-ID') }}
+                                </td>
+                                <td>{{ trx.duration_days }} Hari</td>
+                                <td>
+                                    <span v-if="trx.status === 'success'" class="status-badge status-active">Sukses</span>
+                                    <span v-else-if="trx.status === 'pending'" class="status-badge status-pending" style="background:rgba(245,158,11,0.15);color:#f59e0b;">Pending</span>
+                                    <span v-else class="status-badge status-suspended">Gagal</span>
+                                </td>
+                                <td style="color:var(--text-muted);font-size:13px;">
+                                    {{ trx.paid_at ? formatDate(trx.paid_at) : '-' }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -997,6 +1058,10 @@
                         <option :value="365">365 Hari (1 Tahun)</option>
                         <option :value="99999">Lifetime (Tanpa Batas)</option>
                     </select>
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Harga Maintenance (Perpanjangan)</label>
+                    <input type="number" v-model="newOwner.maintenance_price" placeholder="Contoh: 50000" style="width:100%;padding:10px 14px;background:var(--bg-900);border:1px solid var(--border-strong);border-radius:8px;color:white;font-family:inherit;">
                 </div>
             </div>
             <div class="modal-actions" style="margin-top:24px;">
@@ -1106,6 +1171,8 @@
                 return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
             };
 
+            const maintenanceHistory = ref([]);
+
             const fetchOwners = async () => {
                 if (!token.value) return;
                 isLoadingOwners.value = true;
@@ -1206,7 +1273,7 @@
             // Create Owner State
             const showCreateOwnerModal = ref(false);
             const isCreatingOwner = ref(false);
-            const newOwner = ref({ name: '', email: '', password: '', store_name: '', duration_days: 365 });
+            const newOwner = ref({ name: '', email: '', password: '', store_name: '', duration_days: 365, maintenance_price: 0 });
 
             // Serial Key State
             const showSerialKeyModal = ref(false);
@@ -1234,7 +1301,7 @@
                     if (!res.ok) throw new Error(data.error || 'Gagal membuat akun owner');
                     alert('🎉 ' + data.message);
                     showCreateOwnerModal.value = false;
-                    newOwner.value = { name: '', email: '', password: '', store_name: '', duration_days: 365 };
+                    newOwner.value = { name: '', email: '', password: '', store_name: '', duration_days: 365, maintenance_price: 0 };
                     fetchOwners();
                 } catch (e) {
                     alert('❌ ' + e.message);
@@ -1293,13 +1360,29 @@
                 });
             };
 
+            const fetchMaintenanceHistory = async () => {
+                if (!token.value) return;
+                try {
+                    const res = await fetch(`${API_URL}/superadmin/maintenance/history`, {
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+                    if (res.status === 401 || res.status === 403) { logout(); return; }
+                    const data = await res.json();
+                    maintenanceHistory.value = Array.isArray(data) ? data : [];
+                } catch (e) {
+                    console.error('Failed to fetch maintenance history:', e);
+                }
+            };
+
             onMounted(() => {
-                if (token.value) fetchOwners();
+                if (!token.value) return;
+                fetchOwners();
+                fetchMaintenanceHistory();
             });
 
             return {
                 token, email, password, error, isLoading, isLoadingOwners, isToggling,
-                owners, newCode, copied, showModal, modalOwner, currentView,
+                owners, newCode, copied, showModal, modalOwner, currentView, maintenanceHistory,
                 activeCount, suspendedCount,
                 showCreateOwnerModal, isCreatingOwner, newOwner, executeCreateOwner,
                 showSerialKeyModal, isLoadingSerialKeys, isGeneratingKey, selectedDuration, serialKeys,

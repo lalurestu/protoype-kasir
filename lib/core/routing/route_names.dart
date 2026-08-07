@@ -22,6 +22,7 @@ class RouteNames {
   static const ownerTaxService = 'owner-tax-service';
   static const ownerLowStockAlert = 'owner-low-stock-alert';
   static const ownerLicense = 'owner-license';
+  static const ownerMaintenancePayment = 'owner-maintenance-payment';
 
   // NOTE: Super Admin TIDAK ada di sini.
   // Super Admin hanya dapat diakses melalui portal Web (admin/index.html).

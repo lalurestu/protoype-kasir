@@ -981,6 +981,144 @@ try {
         exit;
 
     // =========================================================================
+    // MAINTENANCE ROUTES
+    // =========================================================================
+
+    } elseif ($method === 'POST' && $route === '/api/owner/maintenance/request') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $stmt = $pdo->prepare("SELECT maintenance_price FROM users WHERE id = ?");
+        $stmt->execute([$user['id']]);
+        $ownerData = $stmt->fetch();
+        
+        $price = (float)$ownerData['maintenance_price'];
+        if ($price <= 0) {
+            http_response_code(400);
+            echo json_encode(["error" => "Harga maintenance belum diatur. Silakan hubungi Super Admin."]);
+            exit;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        $durationDays = isset($input['duration_days']) ? (int)$input['duration_days'] : 30; // default 1 month
+        
+        $serverKey = 'Mid-server-pScqIkUSLacGu739R4FnTDFO';
+        $orderId = 'MAINT-' . $user['id'] . '-' . time() . '-' . rand(100, 999);
+        $grossAmount = (int)$price;
+
+        $payload = [
+            "payment_type" => "qris",
+            "transaction_details" => [
+                "order_id" => $orderId,
+                "gross_amount" => $grossAmount
+            ]
+        ];
+
+        $ch = curl_init('https://api.sandbox.midtrans.com/v2/charge');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Basic ' . base64_encode($serverKey . ':')
+        ]);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $resData = json_decode($response, true);
+
+        if (isset($resData['status_code']) && $resData['status_code'] == '201') {
+            $qrUrl = '';
+            if (isset($resData['actions']) && is_array($resData['actions'])) {
+                foreach ($resData['actions'] as $action) {
+                    if ($action['name'] === 'generate-qr-code') {
+                        $qrUrl = $action['url'];
+                        break;
+                    }
+                }
+            }
+
+            // Save to DB
+            $stmtIns = $pdo->prepare("INSERT INTO maintenance_transactions (user_id, order_id, amount, duration_days, status) VALUES (?, ?, ?, ?, 'pending')");
+            $stmtIns->execute([$user['id'], $orderId, $grossAmount, $durationDays]);
+
+            echo json_encode([
+                "order_id" => $orderId,
+                "qr_url" => $qrUrl,
+                "amount" => $grossAmount
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode(["error" => "Failed to generate QRIS", "midtrans_response" => $resData]);
+        }
+        exit;
+
+    } elseif ($method === 'POST' && $route === '/api/midtrans/webhook') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!$input || !isset($input['order_id']) || !isset($input['transaction_status'])) {
+            http_response_code(400); echo "Invalid payload"; exit;
+        }
+
+        $orderId = $input['order_id'];
+        $status = $input['transaction_status'];
+        
+        // Hanya proses order maintenance
+        if (strpos($orderId, 'MAINT-') === 0 && ($status === 'settlement' || $status === 'capture')) {
+            $stmt = $pdo->prepare("SELECT * FROM maintenance_transactions WHERE order_id = ? AND status = 'pending' LIMIT 1");
+            $stmt->execute([$orderId]);
+            $trx = $stmt->fetch();
+            
+            if ($trx) {
+                $pdo->beginTransaction();
+                try {
+                    // Update trx status
+                    $pdo->prepare("UPDATE maintenance_transactions SET status = 'success', paid_at = NOW() WHERE id = ?")
+                        ->execute([$trx['id']]);
+                        
+                    // Extend license
+                    $durationDays = (int)$trx['duration_days'];
+                    if (DB_CONNECTION === 'pgsql') {
+                        $pdo->prepare("UPDATE users SET license_expires_at = CASE WHEN license_expires_at > NOW() THEN license_expires_at + INTERVAL '$durationDays days' ELSE NOW() + INTERVAL '$durationDays days' END WHERE id = ?")
+                            ->execute([$trx['user_id']]);
+                    } else {
+                        $pdo->prepare("UPDATE users SET license_expires_at = CASE WHEN license_expires_at > NOW() THEN DATE_ADD(license_expires_at, INTERVAL ? DAY) ELSE DATE_ADD(NOW(), INTERVAL ? DAY) END WHERE id = ?")
+                            ->execute([$durationDays, $durationDays, $trx['user_id']]);
+                    }
+                    
+                    $pdo->commit();
+                } catch (Exception $e) {
+                    $pdo->rollBack();
+                    http_response_code(500); echo "Error: " . $e->getMessage(); exit;
+                }
+            }
+        }
+        echo json_encode(['status' => 'ok']); exit;
+
+    } elseif ($method === 'GET' && $route === '/api/owner/maintenance/history') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $stmt = $pdo->prepare("SELECT * FROM maintenance_transactions WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$user['id']]);
+        echo json_encode($stmt->fetchAll()); exit;
+
+    } elseif ($method === 'GET' && $route === '/api/superadmin/maintenance/history') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $stmt = $pdo->query("SELECT mt.*, u.name as owner_name, u.email as owner_email FROM maintenance_transactions mt JOIN users u ON mt.user_id = u.id ORDER BY mt.created_at DESC");
+        echo json_encode($stmt->fetchAll()); exit;
+
+    } elseif ($method === 'GET' && $route === '/api/owner/maintenance/price') {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'owner') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+
+        $stmt = $pdo->prepare("SELECT maintenance_price, license_expires_at FROM users WHERE id = ?");
+        $stmt->execute([$user['id']]);
+        echo json_encode($stmt->fetch()); exit;
+
+    // =========================================================================
     // CHECKOUT ROUTE (UPDATED with discount, tax, customer, shift)
     // =========================================================================
 
@@ -1845,6 +1983,7 @@ try {
         }
 
         $durationDays = isset($input['duration_days']) ? (int)$input['duration_days'] : 365;
+        $maintenancePrice = isset($input['maintenance_price']) ? (float)$input['maintenance_price'] : 0;
         $storeName = !empty($input['store_name']) ? trim($input['store_name']) : 'Toko ' . trim($input['name']);
         $passwordHash = password_hash($input['password'], PASSWORD_BCRYPT);
 
@@ -1852,18 +1991,18 @@ try {
         try {
             if (DB_CONNECTION === 'pgsql') {
                 $stmtIns = $pdo->prepare("
-                    INSERT INTO users (name, email, password, role, license_expires_at, is_active) 
-                    VALUES (?, ?, ?, 'owner', (NOW() + INTERVAL '$durationDays days'), true)
+                    INSERT INTO users (name, email, password, role, license_expires_at, is_active, maintenance_price) 
+                    VALUES (?, ?, ?, 'owner', (NOW() + INTERVAL '$durationDays days'), true, ?)
                     RETURNING id
                 ");
-                $stmtIns->execute([trim($input['name']), $email, $passwordHash]);
+                $stmtIns->execute([trim($input['name']), $email, $passwordHash, $maintenancePrice]);
                 $ownerId = $stmtIns->fetchColumn();
             } else {
                 $stmtIns = $pdo->prepare("
-                    INSERT INTO users (name, email, password, role, license_expires_at, is_active) 
-                    VALUES (?, ?, ?, 'owner', DATE_ADD(NOW(), INTERVAL ? DAY), true)
+                    INSERT INTO users (name, email, password, role, license_expires_at, is_active, maintenance_price) 
+                    VALUES (?, ?, ?, 'owner', DATE_ADD(NOW(), INTERVAL ? DAY), true, ?)
                 ");
-                $stmtIns->execute([trim($input['name']), $email, $passwordHash, $durationDays]);
+                $stmtIns->execute([trim($input['name']), $email, $passwordHash, $durationDays, $maintenancePrice]);
                 $ownerId = $pdo->lastInsertId();
             }
 
@@ -1880,7 +2019,8 @@ try {
                     'email' => $email,
                     'role' => 'owner',
                     'store_name' => $storeName,
-                    'duration_days' => $durationDays
+                    'duration_days' => $durationDays,
+                    'maintenance_price' => $maintenancePrice
                 ]
             ]);
             exit;
@@ -2002,8 +2142,22 @@ try {
         $user = getAuthUser($pdo);
         if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
 
-        $stmt = $pdo->query("SELECT id, name, email, is_active, license_expires_at, created_at FROM users WHERE role = 'owner' ORDER BY created_at DESC");
+        $stmt = $pdo->query("SELECT id, name, email, is_active, license_expires_at, created_at, maintenance_price FROM users WHERE role = 'owner' ORDER BY created_at DESC");
         echo json_encode($stmt->fetchAll()); exit;
+
+    } elseif ($method === 'PUT' && preg_match('/^\/api\/admin\/owners\/(\d+)$/', $route, $matches)) {
+        $user = getAuthUser($pdo);
+        if ($user['role'] !== 'super_admin') { http_response_code(403); echo json_encode(['error' => 'Forbidden']); exit; }
+        
+        $ownerId = $matches[1];
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        if (isset($input['maintenance_price'])) {
+            $maintenancePrice = (float)$input['maintenance_price'];
+            $pdo->prepare("UPDATE users SET maintenance_price = ? WHERE id = ? AND role = 'owner'")->execute([$maintenancePrice, $ownerId]);
+        }
+        
+        echo json_encode(['message' => 'Owner updated successfully']); exit;
 
     } elseif ($method === 'POST' && preg_match('/^\/api\/admin\/owners\/(\d+)\/toggle$/', $route, $matches)) {
         $user = getAuthUser($pdo);

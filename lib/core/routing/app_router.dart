@@ -25,6 +25,7 @@ import '../../features/owner/presentation/screens/manage_promo_screen.dart';
 import '../../features/owner/presentation/screens/owner_tax_service_screen.dart';
 import '../../features/owner/presentation/screens/owner_low_stock_screen.dart';
 import '../../features/owner/presentation/screens/owner_license_screen.dart';
+import '../../features/owner/presentation/screens/owner_maintenance_payment_screen.dart';
 
 /// Notifier yang jadi jembatan antara Riverpod state dan GoRouter,
 /// sehingga GoRouter TIDAK perlu direcreate setiap auth state berubah.
@@ -186,6 +187,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             path: 'license',
             name: RouteNames.ownerLicense,
             builder: (context, state) => const OwnerLicenseScreen(),
+          ),
+          GoRoute(
+            path: 'maintenance-payment',
+            name: RouteNames.ownerMaintenancePayment,
+            builder: (context, state) => const OwnerMaintenancePaymentScreen(),
           ),
         ],
       ),
